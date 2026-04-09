@@ -119,3 +119,19 @@ export function getDaysUntil(deadline) {
   const diff = end.getTime() - Date.now();
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
+
+export function isCompletedStack(stack = {}, total = 0) {
+  if (stack.status === "completed" || stack.completed_at) {
+    return true;
+  }
+
+  return getStackProgress(total, stack.goal_amount) >= 1;
+}
+
+export function buildShareMessage(stack, total, memberCount) {
+  return [
+    `We completed "${stack.name}" on Stack.`,
+    `Saved: $${total} of $${stack.goal_amount || total}.`,
+    `${memberCount || 1} ${memberCount === 1 ? "member" : "members"} helped make it happen.`
+  ].join(" ");
+}

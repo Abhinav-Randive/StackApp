@@ -16,6 +16,8 @@ import { APP_STYLES, COLORS } from "../theme";
 export default function InviteScreen({ route, navigation }) {
   const { stack } = route.params;
   const [friends, setFriends] = useState([]);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const fetchFriends = async () => {
@@ -36,11 +38,19 @@ export default function InviteScreen({ route, navigation }) {
   }, []);
 
   const invite = async (friendId) => {
-    await updateDoc(doc(db, "stacks", stack.id), {
-      members: arrayUnion(friendId)
-    });
+    try {
+      setBusyId(friendId);
+      setError("");
+      await updateDoc(doc(db, "stacks", stack.id), {
+        members: arrayUnion(friendId)
+      });
 
-    navigation.goBack();
+      navigation.goBack();
+    } catch (err) {
+      setError(err?.message || "Unable to invite friend right now.");
+    } finally {
+      setBusyId("");
+    }
   };
 
   return (
@@ -53,14 +63,18 @@ export default function InviteScreen({ route, navigation }) {
         </TouchableOpacity>
       )}
     >
+      {error ? (
+        <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
+      ) : null}
       {friends.map((friend) => (
         <TouchableOpacity
           key={friend.id}
           onPress={() => invite(friend.id)}
-          style={APP_STYLES.card}
+          style={[APP_STYLES.card, busyId === friend.id ? { opacity: 0.55 } : null]}
+          disabled={!!busyId}
         >
           <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 0 }]}>
-            {friend.email}
+            {busyId === friend.id ? "Inviting..." : friend.email}
           </Text>
         </TouchableOpacity>
       ))}

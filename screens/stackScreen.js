@@ -21,12 +21,15 @@ import ProgressCircle from "../components/ProgressCircle";
 import {
   createActivity,
   createNotification,
+  buildShareMessage,
   getDaysUntil,
   getLatestMilestone,
   getNextMilestone,
   getStackProgress,
-  getTargetUserIds
+  getTargetUserIds,
+  isCompletedStack
 } from "../utils/activity";
+import { isValidDateInput, parsePositiveAmount, sanitizeText } from "../utils/validation";
 
 export default function StackScreen({ route, navigation }) {
   const { stack: initialStack } = route.params;
@@ -39,6 +42,10 @@ export default function StackScreen({ route, navigation }) {
   const [draftName, setDraftName] = useState(initialStack.name || "");
   const [draftGoal, setDraftGoal] = useState(String(initialStack.goal_amount || ""));
   const [draftDeadline, setDraftDeadline] = useState(initialStack.deadline || "");
+  const [savingContribution, setSavingContribution] = useState(false);
+  const [savingStack, setSavingStack] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, "stacks", initialStack.id), async (snap) => {
@@ -88,19 +95,24 @@ export default function StackScreen({ route, navigation }) {
   const latestMilestone = getLatestMilestone(progress);
   const nextMilestone = getNextMilestone(progress);
   const daysLeft = getDaysUntil(stack.deadline);
+  const completed = isCompletedStack(stack, total);
 
   const add = async () => {
-    if (!amount) return;
+    const parsedAmount = parsePositiveAmount(amount);
+    if (!parsedAmount) {
+      setError("Enter a valid contribution greater than 0.");
+      return;
+    }
 
-    const parsedAmount = parseFloat(amount);
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) return;
-
-    await addDoc(collection(db, "contributions"), {
+    try {
+      setSavingContribution(true);
+      setError("");
+      await addDoc(collection(db, "contributions"), {
       user_id: auth.currentUser.uid,
       stack_id: stack.id,
       amount: parsedAmount,
       timestamp: Date.now()
-    });
+      });
 
     await createActivity({
       type: "contribution",
@@ -147,18 +159,84 @@ export default function StackScreen({ route, navigation }) {
       });
     }
 
-    setAmount("");
+    if (!isCompletedStack(stack, total) && getStackProgress(total + parsedAmount, stack.goal_amount) >= 1) {
+      const completedAt = Date.now();
+      const completedMessage = buildShareMessage(stack, total + parsedAmount, members.length || stack.members?.length || 1);
+
+      await updateDoc(doc(db, "stacks", stack.id), {
+        status: "completed",
+        completed_at: completedAt,
+        completed_message: completedMessage
+      });
+
+      navigation.navigate("CompletedStack", {
+        stack: {
+          ...stack,
+          status: "completed",
+          completed_at: completedAt,
+          completed_message: completedMessage
+        },
+        total: total + parsedAmount,
+        members
+      });
+    }
+
+      setAmount("");
+    } catch (err) {
+      setError(err?.message || "Unable to save contribution right now.");
+    } finally {
+      setSavingContribution(false);
+    }
+  };
+
+  const archiveStack = async () => {
+    try {
+      setArchiving(true);
+      setError("");
+      await updateDoc(doc(db, "stacks", stack.id), {
+        archived_at: Date.now(),
+        status: "completed"
+      });
+    } catch (err) {
+      setError(err?.message || "Unable to archive this stack right now.");
+    } finally {
+      setArchiving(false);
+    }
   };
 
   const saveStack = async () => {
-    if (!draftName.trim() || !draftGoal.trim()) return;
+    const safeName = sanitizeText(draftName, 60);
+    const parsedGoal = parsePositiveAmount(draftGoal);
 
-    await updateDoc(doc(db, "stacks", stack.id), {
-      name: draftName.trim(),
-      goal_amount: Number(draftGoal),
-      deadline: draftDeadline.trim()
-    });
-    setEditing(false);
+    if (!safeName) {
+      setError("Enter a stack name.");
+      return;
+    }
+
+    if (!parsedGoal) {
+      setError("Enter a valid goal amount greater than 0.");
+      return;
+    }
+
+    if (!isValidDateInput(draftDeadline.trim())) {
+      setError("Deadline must use YYYY-MM-DD.");
+      return;
+    }
+
+    try {
+      setSavingStack(true);
+      setError("");
+      await updateDoc(doc(db, "stacks", stack.id), {
+        name: safeName,
+        goal_amount: parsedGoal,
+        deadline: draftDeadline.trim()
+      });
+      setEditing(false);
+    } catch (err) {
+      setError(err?.message || "Unable to save stack changes right now.");
+    } finally {
+      setSavingStack(false);
+    }
   };
 
   const leaveStack = async () => {
@@ -204,24 +282,35 @@ export default function StackScreen({ route, navigation }) {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          const contributionSnapshot = await getDocs(
-            query(collection(db, "contributions"), where("stack_id", "==", stack.id))
-          );
-          const activitySnapshot = await getDocs(
-            query(collection(db, "activities"), where("stack_id", "==", stack.id))
-          );
-          const notificationSnapshot = await getDocs(
-            query(collection(db, "notifications"), where("stack_id", "==", stack.id))
-          );
+          try {
+            setError("");
+            const contributionSnapshot = await getDocs(
+              query(collection(db, "contributions"), where("stack_id", "==", stack.id))
+            );
+            const activitySnapshot = await getDocs(
+              query(collection(db, "activities"), where("stack_id", "==", stack.id))
+            );
+            const notificationSnapshot = await getDocs(
+              query(collection(db, "notifications"), where("stack_id", "==", stack.id))
+            );
 
-          await Promise.all([
-            ...contributionSnapshot.docs.map((item) => deleteDoc(item.ref)),
-            ...activitySnapshot.docs.map((item) => deleteDoc(item.ref)),
-            ...notificationSnapshot.docs.map((item) => deleteDoc(item.ref))
-          ]);
+            await Promise.all([
+              ...contributionSnapshot.docs.map((item) => deleteDoc(item.ref)),
+              ...activitySnapshot.docs.map((item) => deleteDoc(item.ref)),
+              ...notificationSnapshot.docs.map((item) => deleteDoc(item.ref))
+            ]);
 
-          await deleteDoc(doc(db, "stacks", stack.id));
-          navigation.goBack();
+            await deleteDoc(doc(db, "stacks", stack.id));
+            navigation.navigate("Main", {
+              screen: "Stacks",
+              params: {
+                deletedStackId: stack.id,
+                deletedAt: Date.now()
+              }
+            });
+          } catch (err) {
+            setError(err?.message || "Unable to delete this stack right now.");
+          }
         }
       }
     ]);
@@ -238,7 +327,11 @@ export default function StackScreen({ route, navigation }) {
           <Text style={[APP_STYLES.subtitle, { marginTop: 16 }]}>
             {stack.members?.length || 0} members working toward this goal
           </Text>
-          {nextMilestone ? (
+          {completed ? (
+            <Text style={[APP_STYLES.subtitle, { color: COLORS.accent, marginTop: 8 }]}>
+              This stack is complete.
+            </Text>
+          ) : nextMilestone ? (
             <Text style={[APP_STYLES.subtitle, { color: COLORS.accent2, marginTop: 8 }]}>
               Next milestone: {nextMilestone}%
             </Text>
@@ -261,6 +354,9 @@ export default function StackScreen({ route, navigation }) {
       </View>
 
       <View style={APP_STYLES.card}>
+        {error ? (
+          <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
+        ) : null}
         {editing ? (
           <>
             <Text style={APP_STYLES.label}>Edit stack</Text>
@@ -286,36 +382,59 @@ export default function StackScreen({ route, navigation }) {
               placeholderTextColor={COLORS.muted}
               style={APP_STYLES.input}
             />
-            <AnimatedPressable onPress={saveStack} style={APP_STYLES.primaryButton}>
-              <Text style={APP_STYLES.primaryButtonText}>Save Stack</Text>
+            <AnimatedPressable onPress={saveStack} style={APP_STYLES.primaryButton} disabled={savingStack}>
+              <Text style={APP_STYLES.primaryButtonText}>{savingStack ? "Saving..." : "Save Stack"}</Text>
             </AnimatedPressable>
-            <AnimatedPressable onPress={() => setEditing(false)} style={APP_STYLES.secondaryButton}>
+            <AnimatedPressable onPress={() => setEditing(false)} style={APP_STYLES.secondaryButton} disabled={savingStack}>
               <Text style={APP_STYLES.secondaryButtonText}>Cancel</Text>
             </AnimatedPressable>
           </>
         ) : (
           <>
-        <Text style={APP_STYLES.label}>Add contribution</Text>
+            {!completed ? (
+              <>
+                <Text style={APP_STYLES.label}>Add contribution</Text>
 
-        <TextInput
-          value={amount}
-          onChangeText={setAmount}
-          placeholder="Add amount"
-          placeholderTextColor={COLORS.muted}
-          keyboardType="numeric"
-          style={APP_STYLES.input}
-        />
+                <TextInput
+                  value={amount}
+                  onChangeText={setAmount}
+                  placeholder="Add amount"
+                  placeholderTextColor={COLORS.muted}
+                  keyboardType="numeric"
+                  style={APP_STYLES.input}
+                />
 
-        <AnimatedPressable onPress={add} style={APP_STYLES.primaryButton}>
-          <Text style={APP_STYLES.primaryButtonText}>Add Contribution</Text>
-        </AnimatedPressable>
+                <AnimatedPressable onPress={add} style={APP_STYLES.primaryButton} disabled={savingContribution}>
+                  <Text style={APP_STYLES.primaryButtonText}>{savingContribution ? "Saving..." : "Add Contribution"}</Text>
+                </AnimatedPressable>
 
-        <AnimatedPressable
-          onPress={() => navigation.navigate("Invite", { stack })}
-          style={APP_STYLES.secondaryButton}
-        >
-          <Text style={APP_STYLES.secondaryButtonText}>Invite Friends</Text>
-        </AnimatedPressable>
+                <AnimatedPressable
+                  onPress={() => navigation.navigate("Invite", { stack })}
+                  style={APP_STYLES.secondaryButton}
+                  disabled={savingContribution}
+                >
+                  <Text style={APP_STYLES.secondaryButtonText}>Invite Friends</Text>
+                </AnimatedPressable>
+              </>
+            ) : (
+              <>
+                <Text style={APP_STYLES.label}>Completed</Text>
+                <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10 }]}>
+                  This stack is done. You can review it, share the win, or archive it.
+                </Text>
+                <AnimatedPressable
+                  onPress={() => navigation.navigate("CompletedStack", { stack, total, members })}
+                  style={APP_STYLES.primaryButton}
+                >
+                  <Text style={APP_STYLES.primaryButtonText}>Open Celebration</Text>
+                </AnimatedPressable>
+                <AnimatedPressable onPress={archiveStack} style={APP_STYLES.secondaryButton} disabled={archiving}>
+                  <Text style={APP_STYLES.secondaryButtonText}>
+                    {stack.archived_at ? "Archived" : archiving ? "Archiving..." : "Archive Stack"}
+                  </Text>
+                </AnimatedPressable>
+              </>
+            )}
           </>
         )}
 

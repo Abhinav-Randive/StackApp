@@ -9,20 +9,63 @@ import { doc, setDoc } from "firebase/firestore";
 import ScreenShell from "../components/ScreenShell";
 import AnimatedPressable from "../components/AnimatedPressable";
 import { APP_STYLES, COLORS } from "../theme";
+import { isValidEmail, normalizeEmail } from "../utils/validation";
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const login = async () => {
-    await signInWithEmailAndPassword(auth, email, password);
-    navigation.replace("Main");
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!isValidEmail(normalizedEmail)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      navigation.replace("Main");
+    } catch (err) {
+      setError(err?.message || "Unable to sign in right now.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signup = async () => {
-    const user = await createUserWithEmailAndPassword(auth, email, password);
-    await setDoc(doc(db, "users", user.user.uid), { email, friends: [] });
-    navigation.replace("Main");
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!isValidEmail(normalizedEmail)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      const user = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+      await setDoc(doc(db, "users", user.user.uid), { email: normalizedEmail, friends: [] });
+      navigation.replace("Main");
+    } catch (err) {
+      setError(err?.message || "Unable to create your account right now.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -54,11 +97,15 @@ export default function LoginScreen({ navigation }) {
           style={APP_STYLES.input}
         />
 
-        <AnimatedPressable onPress={login} style={APP_STYLES.primaryButton}>
-          <Text style={APP_STYLES.primaryButtonText}>Login</Text>
+        {error ? (
+          <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
+        ) : null}
+
+        <AnimatedPressable onPress={login} style={APP_STYLES.primaryButton} disabled={loading}>
+          <Text style={APP_STYLES.primaryButtonText}>{loading ? "Working..." : "Login"}</Text>
         </AnimatedPressable>
 
-        <AnimatedPressable onPress={signup} style={APP_STYLES.secondaryButton}>
+        <AnimatedPressable onPress={signup} style={APP_STYLES.secondaryButton} disabled={loading}>
           <Text style={APP_STYLES.secondaryButtonText}>Create account</Text>
         </AnimatedPressable>
       </View>

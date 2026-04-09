@@ -144,5 +144,10 @@ export const APP_STYLES = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginTop: 18
+  },
+  feedbackText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 12
   }
 });

@@ -17,6 +17,7 @@ import ScreenShell from "../components/ScreenShell";
 import AnimatedPressable from "../components/AnimatedPressable";
 import { APP_STYLES, COLORS } from "../theme";
 import { createNotification, formatActivityLine } from "../utils/activity";
+import { sanitizeText } from "../utils/validation";
 
 export default function FeedScreen() {
   const [activities, setActivities] = useState([]);
@@ -24,6 +25,8 @@ export default function FeedScreen() {
   const [drafts, setDrafts] = useState({});
   const [filter, setFilter] = useState("All");
   const [stackIds, setStackIds] = useState([]);
+  const [busyKey, setBusyKey] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const q = query(collection(db, "activities"), orderBy("timestamp", "desc"));
@@ -52,26 +55,37 @@ export default function FeedScreen() {
 
   const toggleLike = async (item) => {
     const hasLiked = (item.likes || []).includes(auth.currentUser.uid);
-
-    await updateDoc(doc(db, "activities", item.id), {
-      likes: hasLiked ? arrayRemove(auth.currentUser.uid) : arrayUnion(auth.currentUser.uid)
-    });
-
-    if (!hasLiked && item.user_id && item.user_id !== auth.currentUser.uid) {
-      await createNotification({
-        type: "like",
-        user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
-        userId: auth.currentUser.uid,
-        stack: { id: item.stack_id, name: item.stack_name },
-        targetUserIds: [item.user_id]
+    const actionKey = `like-${item.id}`;
+    try {
+      setBusyKey(actionKey);
+      setError("");
+      await updateDoc(doc(db, "activities", item.id), {
+        likes: hasLiked ? arrayRemove(auth.currentUser.uid) : arrayUnion(auth.currentUser.uid)
       });
+
+      if (!hasLiked && item.user_id && item.user_id !== auth.currentUser.uid) {
+        await createNotification({
+          type: "like",
+          user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
+          userId: auth.currentUser.uid,
+          stack: { id: item.stack_id, name: item.stack_name },
+          targetUserIds: [item.user_id]
+        });
+      }
+    } catch (err) {
+      setError(err?.message || "Unable to update like right now.");
+    } finally {
+      setBusyKey("");
     }
   };
 
   const submitComment = async (item) => {
-    const text = (drafts[item.id] || "").trim();
+    const text = sanitizeText(drafts[item.id] || "", 220);
 
-    if (!text) return;
+    if (!text) {
+      setError("Enter a comment before posting.");
+      return;
+    }
 
     const comment = {
       id: `${Date.now()}-${auth.currentUser.uid}`,
@@ -81,33 +95,51 @@ export default function FeedScreen() {
       timestamp: Date.now()
     };
 
-    await updateDoc(doc(db, "activities", item.id), {
-      comments: arrayUnion(comment)
-    });
-
-    if (item.user_id && item.user_id !== auth.currentUser.uid) {
-      await createNotification({
-        type: "comment",
-        user: comment.user,
-        userId: auth.currentUser.uid,
-        stack: { id: item.stack_id, name: item.stack_name },
-        text,
-        targetUserIds: [item.user_id]
+    const actionKey = `comment-${item.id}`;
+    try {
+      setBusyKey(actionKey);
+      setError("");
+      await updateDoc(doc(db, "activities", item.id), {
+        comments: arrayUnion(comment)
       });
-    }
 
-    setDrafts((current) => ({ ...current, [item.id]: "" }));
+      if (item.user_id && item.user_id !== auth.currentUser.uid) {
+        await createNotification({
+          type: "comment",
+          user: comment.user,
+          userId: auth.currentUser.uid,
+          stack: { id: item.stack_id, name: item.stack_name },
+          text,
+          targetUserIds: [item.user_id]
+        });
+      }
+
+      setDrafts((current) => ({ ...current, [item.id]: "" }));
+    } catch (err) {
+      setError(err?.message || "Unable to post comment right now.");
+    } finally {
+      setBusyKey("");
+    }
   };
 
   const toggleReaction = async (item, reactionType) => {
     const reactionUsers = item.reactions?.[reactionType] || [];
     const hasReacted = reactionUsers.includes(auth.currentUser.uid);
 
-    await updateDoc(doc(db, "activities", item.id), {
-      [`reactions.${reactionType}`]: hasReacted
-        ? arrayRemove(auth.currentUser.uid)
-        : arrayUnion(auth.currentUser.uid)
-    });
+    const actionKey = `reaction-${reactionType}-${item.id}`;
+    try {
+      setBusyKey(actionKey);
+      setError("");
+      await updateDoc(doc(db, "activities", item.id), {
+        [`reactions.${reactionType}`]: hasReacted
+          ? arrayRemove(auth.currentUser.uid)
+          : arrayUnion(auth.currentUser.uid)
+      });
+    } catch (err) {
+      setError(err?.message || "Unable to update reaction right now.");
+    } finally {
+      setBusyKey("");
+    }
   };
 
   const filteredActivities = activities.filter((item) => {
@@ -124,6 +156,9 @@ export default function FeedScreen() {
 
   return (
     <ScreenShell title="Activity" subtitle="See what the community is adding in real time.">
+      {error ? (
+        <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
+      ) : null}
       <View style={[APP_STYLES.row, { marginTop: 14 }]}>
         {["All", "My Stacks", "Friends"].map((label) => (
           <AnimatedPressable
@@ -155,6 +190,7 @@ export default function FeedScreen() {
             <AnimatedPressable
               onPress={() => toggleLike(item)}
               style={[APP_STYLES.secondaryButton, { flex: 1, marginTop: 0, marginRight: 8 }]}
+              disabled={busyKey === `like-${item.id}`}
             >
               <Text style={APP_STYLES.secondaryButtonText}>
                 {(item.likes || []).includes(auth.currentUser.uid) ? "Liked" : "Like"} ({item.likes?.length || 0})
@@ -165,6 +201,7 @@ export default function FeedScreen() {
                 key={reaction}
                 onPress={() => toggleReaction(item, reaction)}
                 style={[APP_STYLES.secondaryButton, { marginTop: 0, marginRight: reaction === "clap" ? 0 : 8, paddingHorizontal: 12 }]}
+                disabled={busyKey === `reaction-${reaction}-${item.id}`}
               >
                 <Text style={APP_STYLES.secondaryButtonText}>
                   {reaction === "heart" ? "H" : reaction === "fire" ? "F" : "C"} ({item.reactions?.[reaction]?.length || 0})
@@ -189,8 +226,8 @@ export default function FeedScreen() {
             onChangeText={(value) => setDrafts((current) => ({ ...current, [item.id]: value }))}
             style={APP_STYLES.input}
           />
-          <AnimatedPressable onPress={() => submitComment(item)} style={APP_STYLES.primaryButton}>
-            <Text style={APP_STYLES.primaryButtonText}>Post Comment</Text>
+          <AnimatedPressable onPress={() => submitComment(item)} style={APP_STYLES.primaryButton} disabled={busyKey === `comment-${item.id}`}>
+            <Text style={APP_STYLES.primaryButtonText}>{busyKey === `comment-${item.id}` ? "Posting..." : "Post Comment"}</Text>
           </AnimatedPressable>
         </View>
       ))}

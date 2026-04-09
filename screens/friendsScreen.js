@@ -10,10 +10,13 @@ import {
 } from "firebase/firestore";
 import ScreenShell from "../components/ScreenShell";
 import { APP_STYLES, COLORS } from "../theme";
+import { isValidEmail, normalizeEmail } from "../utils/validation";
 
 export default function FriendsScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [friends, setFriends] = useState([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -32,18 +35,39 @@ export default function FriendsScreen({ navigation }) {
   }, []);
 
   const add = async () => {
-    const q = query(collection(db, "users"), where("email", "==", email));
-    const res = await getDocs(q);
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+      setError("Enter a valid email address.");
+      return;
+    }
 
-    if (res.empty) return;
+    try {
+      setLoading(true);
+      setError("");
+      const q = query(collection(db, "users"), where("email", "==", normalizedEmail));
+      const res = await getDocs(q);
 
-    const friend = res.docs[0];
+      if (res.empty) {
+        setError("No user found with that email.");
+        return;
+      }
 
-    await updateDoc(doc(db, "users", auth.currentUser.uid), {
-      friends: arrayUnion(friend.id)
-    });
+      const friend = res.docs[0];
+      if (friend.id === auth.currentUser.uid) {
+        setError("You can’t add yourself.");
+        return;
+      }
 
-    setEmail("");
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+        friends: arrayUnion(friend.id)
+      });
+
+      setEmail("");
+    } catch (err) {
+      setError(err?.message || "Unable to add friend right now.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -60,9 +84,12 @@ export default function FriendsScreen({ navigation }) {
             keyboardType="email-address"
             style={APP_STYLES.input}
           />
+        {error ? (
+          <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
+        ) : null}
 
-        <TouchableOpacity onPress={add} style={APP_STYLES.primaryButton}>
-          <Text style={APP_STYLES.primaryButtonText}>Add Friend</Text>
+        <TouchableOpacity onPress={add} style={[APP_STYLES.primaryButton, loading ? { opacity: 0.55 } : null]} disabled={loading}>
+          <Text style={APP_STYLES.primaryButtonText}>{loading ? "Adding..." : "Add Friend"}</Text>
         </TouchableOpacity>
       </View>
 
