@@ -63,6 +63,14 @@ export function formatActivityLine(item) {
     return `${name} liked an update${stackName}`;
   }
 
+  if (item.type === "reaction") {
+    return `${name} reacted${stackName}`;
+  }
+
+  if (item.text) {
+    return `${name} added $${item.amount || 0}${stackName} and shared why`;
+  }
+
   return `${name} added $${item.amount || 0}${stackName}`;
 }
 
@@ -80,6 +88,10 @@ export function formatNotificationLine(item) {
 
   if (item.type === "like") {
     return `${name} liked your update${stackName}`;
+  }
+
+  if (item.type === "reaction") {
+    return `${name} reacted to your update${stackName}`;
   }
 
   return `${name} added $${item.amount || 0}${stackName}`;
@@ -134,4 +146,120 @@ export function buildShareMessage(stack, total, memberCount) {
     `Saved: $${total} of $${stack.goal_amount || total}.`,
     `${memberCount || 1} ${memberCount === 1 ? "member" : "members"} helped make it happen.`
   ].join(" ");
+}
+
+export function formatCurrency(value) {
+  return `$${Math.round(Number(value) || 0)}`;
+}
+
+export function getContributionStreak(contributions = []) {
+  const days = [...new Set(
+    contributions
+      .map((item) => {
+        const timestamp = Number(item.timestamp) || 0;
+        if (!timestamp) return null;
+        return new Date(timestamp).toISOString().slice(0, 10);
+      })
+      .filter(Boolean)
+  )].sort((a, b) => (a < b ? 1 : -1));
+
+  if (!days.length) {
+    return 0;
+  }
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = yesterday.toISOString().slice(0, 10);
+
+  if (days[0] !== todayKey && days[0] !== yesterdayKey) {
+    return 0;
+  }
+
+  let streak = 1;
+  let cursor = new Date(`${days[0]}T00:00:00`);
+
+  for (let index = 1; index < days.length; index += 1) {
+    const previous = new Date(cursor);
+    previous.setDate(previous.getDate() - 1);
+    const previousKey = previous.toISOString().slice(0, 10);
+
+    if (days[index] !== previousKey) {
+      break;
+    }
+
+    streak += 1;
+    cursor = previous;
+  }
+
+  return streak;
+}
+
+export function buildProfileBadges({
+  totalSaved = 0,
+  completedCount = 0,
+  friendCount = 0,
+  streakDays = 0,
+  stackCount = 0
+}) {
+  const badges = [];
+
+  if (totalSaved >= 1000) {
+    badges.push("Four-digit saver");
+  }
+
+  if (completedCount >= 1) {
+    badges.push("Goal finisher");
+  }
+
+  if (friendCount >= 3) {
+    badges.push("Community builder");
+  }
+
+  if (streakDays >= 3) {
+    badges.push("Momentum streak");
+  }
+
+  if (stackCount >= 3) {
+    badges.push("Multi-stack planner");
+  }
+
+  if (!badges.length) {
+    badges.push("Getting started");
+  }
+
+  return badges;
+}
+
+export function getInitials(name = "", fallback = "") {
+  const source = (name || fallback || "").trim();
+
+  if (!source) {
+    return "ST";
+  }
+
+  const pieces = source
+    .replace(/@.*/, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (!pieces.length) {
+    return "ST";
+  }
+
+  return pieces.map((piece) => piece[0].toUpperCase()).join("");
+}
+
+export function getInactiveDays(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const diff = Date.now() - Number(timestamp);
+  if (Number.isNaN(diff) || diff < 0) {
+    return null;
+  }
+
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
 }

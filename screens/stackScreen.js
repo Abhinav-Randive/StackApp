@@ -4,6 +4,7 @@ import { db, auth } from "../firebase";
 import {
   addDoc,
   arrayRemove,
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -34,6 +35,7 @@ import { isValidDateInput, parsePositiveAmount, sanitizeText } from "../utils/va
 export default function StackScreen({ route, navigation }) {
   const { stack: initialStack } = route.params;
   const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
   const [data, setData] = useState([]);
   const [profile, setProfile] = useState(null);
   const [stack, setStack] = useState(initialStack);
@@ -108,80 +110,84 @@ export default function StackScreen({ route, navigation }) {
       setSavingContribution(true);
       setError("");
       await addDoc(collection(db, "contributions"), {
-      user_id: auth.currentUser.uid,
-      stack_id: stack.id,
-      amount: parsedAmount,
-      timestamp: Date.now()
-      });
-
-    await createActivity({
-      type: "contribution",
-      user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
-      userId: auth.currentUser.uid,
-      stack,
-      amount: parsedAmount,
-      targetUserIds: getTargetUserIds(stack, auth.currentUser.uid)
-    });
-
-    await createNotification({
-      type: "contribution",
-      user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
-      userId: auth.currentUser.uid,
-      stack,
-      amount: parsedAmount,
-      targetUserIds: getTargetUserIds(stack, auth.currentUser.uid)
-    });
-
-    const nextProgress = getStackProgress(total + parsedAmount, stack.goal_amount);
-    const reachedMilestone = getLatestMilestone(nextProgress);
-
-    if (reachedMilestone > (stack.last_milestone || 0)) {
-      await updateDoc(doc(db, "stacks", stack.id), {
-        last_milestone: reachedMilestone
+        user_id: auth.currentUser.uid,
+        stack_id: stack.id,
+        amount: parsedAmount,
+        note: sanitizeText(note, 120),
+        timestamp: Date.now()
       });
 
       await createActivity({
-        type: "milestone",
+        type: "contribution",
         user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
         userId: auth.currentUser.uid,
         stack,
-        targetUserIds: getTargetUserIds(stack, auth.currentUser.uid),
-        metadata: { milestone: reachedMilestone }
+        amount: parsedAmount,
+        text: sanitizeText(note, 120),
+        targetUserIds: getTargetUserIds(stack, auth.currentUser.uid)
       });
 
       await createNotification({
-        type: "milestone",
+        type: "contribution",
         user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
         userId: auth.currentUser.uid,
         stack,
+        amount: parsedAmount,
+        text: sanitizeText(note, 120),
         targetUserIds: getTargetUserIds(stack, auth.currentUser.uid),
-        metadata: { milestone: reachedMilestone }
-      });
-    }
-
-    if (!isCompletedStack(stack, total) && getStackProgress(total + parsedAmount, stack.goal_amount) >= 1) {
-      const completedAt = Date.now();
-      const completedMessage = buildShareMessage(stack, total + parsedAmount, members.length || stack.members?.length || 1);
-
-      await updateDoc(doc(db, "stacks", stack.id), {
-        status: "completed",
-        completed_at: completedAt,
-        completed_message: completedMessage
       });
 
-      navigation.navigate("CompletedStack", {
-        stack: {
-          ...stack,
+      const nextProgress = getStackProgress(total + parsedAmount, stack.goal_amount);
+      const reachedMilestone = getLatestMilestone(nextProgress);
+
+      if (reachedMilestone > (stack.last_milestone || 0)) {
+        await updateDoc(doc(db, "stacks", stack.id), {
+          last_milestone: reachedMilestone
+        });
+
+        await createActivity({
+          type: "milestone",
+          user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
+          userId: auth.currentUser.uid,
+          stack,
+          targetUserIds: getTargetUserIds(stack, auth.currentUser.uid),
+          metadata: { milestone: reachedMilestone }
+        });
+
+        await createNotification({
+          type: "milestone",
+          user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
+          userId: auth.currentUser.uid,
+          stack,
+          targetUserIds: getTargetUserIds(stack, auth.currentUser.uid),
+          metadata: { milestone: reachedMilestone }
+        });
+      }
+
+      if (!isCompletedStack(stack, total) && getStackProgress(total + parsedAmount, stack.goal_amount) >= 1) {
+        const completedAt = Date.now();
+        const completedMessage = buildShareMessage(stack, total + parsedAmount, members.length || stack.members?.length || 1);
+
+        await updateDoc(doc(db, "stacks", stack.id), {
           status: "completed",
           completed_at: completedAt,
           completed_message: completedMessage
-        },
-        total: total + parsedAmount,
-        members
-      });
-    }
+        });
+
+        navigation.navigate("CompletedStack", {
+          stack: {
+            ...stack,
+            status: "completed",
+            completed_at: completedAt,
+            completed_message: completedMessage
+          },
+          total: total + parsedAmount,
+          members
+        });
+      }
 
       setAmount("");
+      setNote("");
     } catch (err) {
       setError(err?.message || "Unable to save contribution right now.");
     } finally {
@@ -273,6 +279,17 @@ export default function StackScreen({ route, navigation }) {
         }
       }
     ]);
+  };
+
+  const toggleAdmin = async (memberId, shouldPromote) => {
+    try {
+      setError("");
+      await updateDoc(doc(db, "stacks", stack.id), {
+        admin_ids: shouldPromote ? arrayUnion(memberId) : arrayRemove(memberId)
+      });
+    } catch (err) {
+      setError(err?.message || "Unable to update this member right now.");
+    }
   };
 
   const removeStack = async () => {
@@ -404,6 +421,14 @@ export default function StackScreen({ route, navigation }) {
                   style={APP_STYLES.input}
                 />
 
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Add a note or reason"
+                  placeholderTextColor={COLORS.muted}
+                  style={APP_STYLES.input}
+                />
+
                 <AnimatedPressable onPress={add} style={APP_STYLES.primaryButton} disabled={savingContribution}>
                   <Text style={APP_STYLES.primaryButtonText}>{savingContribution ? "Saving..." : "Add Contribution"}</Text>
                 </AnimatedPressable>
@@ -468,17 +493,29 @@ export default function StackScreen({ route, navigation }) {
                 {member.name || member.email}
               </Text>
               <Text style={[APP_STYLES.subtitle, { marginTop: 4 }]}>
-                {member.id === stack.owner_id ? "Owner" : "Member"}
+                {member.id === stack.owner_id ? "Owner" : (stack.admin_ids || []).includes(member.id) ? "Admin" : "Member"}
               </Text>
             </View>
-            {stack.owner_id === auth.currentUser.uid && member.id !== auth.currentUser.uid ? (
-              <AnimatedPressable
-                onPress={() => removeMember(member.id)}
-                style={[APP_STYLES.dangerButton, { marginTop: 0, paddingVertical: 10, paddingHorizontal: 14 }]}
-              >
-                <Text style={APP_STYLES.dangerButtonText}>Remove</Text>
-              </AnimatedPressable>
-            ) : null}
+            <View style={[APP_STYLES.row, { marginLeft: 12 }]}>
+              {stack.owner_id === auth.currentUser.uid && member.id !== auth.currentUser.uid ? (
+                <AnimatedPressable
+                  onPress={() => toggleAdmin(member.id, !(stack.admin_ids || []).includes(member.id))}
+                  style={[APP_STYLES.secondaryButton, { marginTop: 0, paddingVertical: 10, paddingHorizontal: 14, marginRight: 8 }]}
+                >
+                  <Text style={APP_STYLES.secondaryButtonText}>
+                    {(stack.admin_ids || []).includes(member.id) ? "Remove Admin" : "Make Admin"}
+                  </Text>
+                </AnimatedPressable>
+              ) : null}
+              {stack.owner_id === auth.currentUser.uid && member.id !== auth.currentUser.uid ? (
+                <AnimatedPressable
+                  onPress={() => removeMember(member.id)}
+                  style={[APP_STYLES.dangerButton, { marginTop: 0, paddingVertical: 10, paddingHorizontal: 14 }]}
+                >
+                  <Text style={APP_STYLES.dangerButtonText}>Remove</Text>
+                </AnimatedPressable>
+              ) : null}
+            </View>
           </View>
         ))}
       </View>
@@ -491,9 +528,16 @@ export default function StackScreen({ route, navigation }) {
             .sort((a, b) => b.timestamp - a.timestamp)
             .slice(0, 5)
             .map((item, index) => (
-              <Text key={`${item.timestamp}-${index}`} style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10 }]}>
-                ${item.amount}
-              </Text>
+              <View key={`${item.timestamp}-${index}`} style={{ marginTop: 10 }}>
+                <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 0 }]}>
+                  ${item.amount}
+                </Text>
+                {item.note ? (
+                  <Text style={[APP_STYLES.subtitle, { marginTop: 4 }]}>
+                    {item.note}
+                  </Text>
+                ) : null}
+              </View>
             ))}
         </View>
       )}

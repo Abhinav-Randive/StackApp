@@ -11,10 +11,12 @@ import {
 import ScreenShell from "../components/ScreenShell";
 import { APP_STYLES, COLORS } from "../theme";
 import { isValidEmail, normalizeEmail } from "../utils/validation";
+import { DEMO_USERS } from "../utils/demoUsers";
 
 export default function FriendsScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [friends, setFriends] = useState([]);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -62,6 +64,13 @@ export default function FriendsScreen({ navigation }) {
         friends: arrayUnion(friend.id)
       });
 
+      setFriends((current) => {
+        if (current.some((item) => item.id === friend.id)) {
+          return current;
+        }
+
+        return [...current, { id: friend.id, ...friend.data() }];
+      });
       setEmail("");
     } catch (err) {
       setError(err?.message || "Unable to add friend right now.");
@@ -69,6 +78,15 @@ export default function FriendsScreen({ navigation }) {
       setLoading(false);
     }
   };
+
+  const filteredFriends = friends.filter((friend) => {
+    const queryValue = search.trim().toLowerCase();
+    if (!queryValue) {
+      return true;
+    }
+
+    return `${friend.name || ""} ${friend.email || ""}`.toLowerCase().includes(queryValue);
+  });
 
   return (
     <ScreenShell title="Friends" subtitle="Bring people into your circle and keep the energy shared.">
@@ -93,7 +111,15 @@ export default function FriendsScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {friends.map((f) => (
+      <TextInput
+        placeholder="Search friends"
+        placeholderTextColor={COLORS.muted}
+        value={search}
+        onChangeText={setSearch}
+        style={APP_STYLES.input}
+      />
+
+      {filteredFriends.map((f) => (
         <TouchableOpacity
           key={f.id}
           onPress={() => navigation.navigate("PublicProfile", { userId: f.id })}
@@ -105,9 +131,31 @@ export default function FriendsScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
       ))}
-      {!friends.length ? (
-        <Text style={APP_STYLES.emptyState}>No friends added yet. Invite someone to get started.</Text>
+      {!filteredFriends.length ? (
+        <Text style={APP_STYLES.emptyState}>
+          {friends.length ? "No friends match that search yet." : "No friends added yet. Invite someone to get started."}
+        </Text>
       ) : null}
+
+      <View style={APP_STYLES.card}>
+        <Text style={APP_STYLES.label}>Demo community</Text>
+        <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10 }]}>
+          Open these sample profiles to test the richer public-profile flow.
+        </Text>
+        {DEMO_USERS.filter((friend) => {
+          const queryValue = search.trim().toLowerCase();
+          if (!queryValue) return true;
+          return `${friend.name} ${friend.email}`.toLowerCase().includes(queryValue);
+        }).map((friend) => (
+          <TouchableOpacity
+            key={friend.id}
+            onPress={() => navigation.navigate("PublicProfile", { userId: friend.id })}
+            style={[APP_STYLES.secondaryButton, { marginTop: 10 }]}
+          >
+            <Text style={APP_STYLES.secondaryButtonText}>{friend.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </ScreenShell>
   );
 }

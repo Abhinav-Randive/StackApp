@@ -10,16 +10,18 @@ import {
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   updateDoc,
   where
 } from "firebase/firestore";
 import ScreenShell from "../components/ScreenShell";
 import AnimatedPressable from "../components/AnimatedPressable";
 import { APP_STYLES, COLORS } from "../theme";
-import { createNotification, formatActivityLine } from "../utils/activity";
+import { createNotification, formatActivityLine, formatCurrency, getInitials } from "../utils/activity";
+import { DEMO_ACTIVITIES } from "../utils/demoUsers";
 import { sanitizeText } from "../utils/validation";
 
-export default function FeedScreen() {
+export default function FeedScreen({ navigation }) {
   const [activities, setActivities] = useState([]);
   const [profile, setProfile] = useState(null);
   const [drafts, setDrafts] = useState({});
@@ -30,9 +32,15 @@ export default function FeedScreen() {
 
   useEffect(() => {
     const q = query(collection(db, "activities"), orderBy("timestamp", "desc"));
-    return onSnapshot(q, snap => {
-      setActivities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setActivities(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      },
+      (err) => {
+        setError(err?.message || "Unable to load activity right now.");
+      }
+    );
   }, []);
 
   useEffect(() => {
@@ -48,9 +56,15 @@ export default function FeedScreen() {
 
   useEffect(() => {
     const q = query(collection(db, "stacks"), where("members", "array-contains", auth.currentUser.uid));
-    return onSnapshot(q, (snap) => {
-      setStackIds(snap.docs.map((item) => item.id));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setStackIds(snap.docs.map((item) => item.id));
+      },
+      (err) => {
+        setError(err?.message || "Unable to load your stack filter right now.");
+      }
+    );
   }, []);
 
   const toggleLike = async (item) => {
@@ -135,10 +149,50 @@ export default function FeedScreen() {
           ? arrayRemove(auth.currentUser.uid)
           : arrayUnion(auth.currentUser.uid)
       });
+
+      if (!hasReacted && item.user_id && item.user_id !== auth.currentUser.uid) {
+        await createNotification({
+          type: "reaction",
+          user: profile?.name || auth.currentUser.email?.split("@")[0] || "Someone",
+          userId: auth.currentUser.uid,
+          stack: { id: item.stack_id, name: item.stack_name },
+          text: reactionType,
+          targetUserIds: [item.user_id]
+        });
+      }
     } catch (err) {
       setError(err?.message || "Unable to update reaction right now.");
     } finally {
       setBusyKey("");
+    }
+  };
+
+  const openStack = async (stackId) => {
+    if (!stackId) {
+      return;
+    }
+
+    try {
+      const stackSnap = await getDoc(doc(db, "stacks", stackId));
+      if (stackSnap.exists()) {
+        navigation.navigate("StackDetail", { stack: { id: stackSnap.id, ...stackSnap.data() } });
+      }
+    } catch (err) {
+      setError(err?.message || "Unable to open that stack right now.");
+    }
+  };
+
+  const seedDemoActivity = async () => {
+    try {
+      setError("");
+      await Promise.all(
+        DEMO_ACTIVITIES.map((item, index) => setDoc(doc(db, "activities", item.id), {
+          ...item,
+          timestamp: Date.now() - index * 1000 * 60 * 22
+        }))
+      );
+    } catch (err) {
+      setError(err?.message || "Unable to load demo activity right now.");
     }
   };
 
@@ -155,7 +209,18 @@ export default function FeedScreen() {
   });
 
   return (
-    <ScreenShell title="Activity" subtitle="See what the community is adding in real time.">
+    <ScreenShell
+      title="Activity"
+      subtitle="See what the community is adding in real time."
+      headerAction={(
+        <AnimatedPressable
+          onPress={seedDemoActivity}
+          style={[APP_STYLES.secondaryButton, { marginTop: 0, paddingVertical: 10, paddingHorizontal: 14 }]}
+        >
+          <Text style={APP_STYLES.secondaryButtonText}>Load Demo</Text>
+        </AnimatedPressable>
+      )}
+    >
       {error ? (
         <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
       ) : null}
@@ -179,11 +244,41 @@ export default function FeedScreen() {
       {filteredActivities.map((item) => (
         <View key={item.id} style={APP_STYLES.card}>
           <Text style={[APP_STYLES.label, { color: COLORS.accent2 }]}>Recent contribution</Text>
+          <AnimatedPressable
+            onPress={() => navigation.navigate("PublicProfile", { userId: item.user_id })}
+            style={[APP_STYLES.row, { marginTop: 12, justifyContent: "flex-start" }]}
+          >
+            <View style={[APP_STYLES.avatar, { width: 42, height: 42, borderRadius: 21 }]}>
+              <Text style={{ color: COLORS.text, fontSize: 14, fontWeight: "800" }}>
+                {getInitials(item.user)}
+              </Text>
+            </View>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 0, fontSize: 16 }]}>
+                {item.user || "Someone"}
+              </Text>
+              <Text style={[APP_STYLES.subtitle, { marginTop: 2 }]}>
+                {item.type === "contribution" ? formatCurrency(item.amount) : item.type}
+              </Text>
+            </View>
+          </AnimatedPressable>
           <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10 }]}>
             {formatActivityLine(item)}
           </Text>
           {item.stack_name ? (
-            <Text style={[APP_STYLES.subtitle, { marginTop: 8 }]}>Stack: {item.stack_name}</Text>
+            <AnimatedPressable
+              onPress={() => openStack(item.stack_id)}
+              style={[APP_STYLES.secondaryButton, { marginTop: 10, paddingVertical: 10 }]}
+            >
+              <Text style={APP_STYLES.secondaryButtonText}>Open {item.stack_name}</Text>
+            </AnimatedPressable>
+          ) : null}
+          {item.text ? (
+            <View style={[APP_STYLES.card, { marginTop: 12, padding: 14, borderRadius: 16 }]}>
+              <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 0 }]}>
+                {["\"", item.text, "\""].join("")}
+              </Text>
+            </View>
           ) : null}
 
           <View style={[APP_STYLES.row, { marginTop: 14 }]}>
@@ -201,18 +296,20 @@ export default function FeedScreen() {
                 key={reaction}
                 onPress={() => toggleReaction(item, reaction)}
                 style={[APP_STYLES.secondaryButton, { marginTop: 0, marginRight: reaction === "clap" ? 0 : 8, paddingHorizontal: 12 }]}
-                disabled={busyKey === `reaction-${reaction}-${item.id}`}
-              >
-                <Text style={APP_STYLES.secondaryButtonText}>
-                  {reaction === "heart" ? "H" : reaction === "fire" ? "F" : "C"} ({item.reactions?.[reaction]?.length || 0})
-                </Text>
-              </AnimatedPressable>
-            ))}
+              disabled={busyKey === `reaction-${reaction}-${item.id}`}
+            >
+              <Text style={APP_STYLES.secondaryButtonText}>
+                  {reaction === "heart" ? "Love" : reaction === "fire" ? "Fire" : "Cheer"} ({item.reactions?.[reaction]?.length || 0})
+              </Text>
+            </AnimatedPressable>
+          ))}
           </View>
 
-          {(item.comments || []).map((comment) => (
-            <View key={comment.id} style={[APP_STYLES.card, { padding: 12, borderRadius: 16 }]}>
-              <Text style={[APP_STYLES.label, { color: COLORS.accent }]}>{comment.user}</Text>
+          {(item.comments || []).map((comment, index) => (
+            <View key={`${comment.id || "comment"}-${index}`} style={[APP_STYLES.card, { padding: 12, borderRadius: 16 }]}>
+              <AnimatedPressable onPress={() => navigation.navigate("PublicProfile", { userId: comment.user_id })}>
+                <Text style={[APP_STYLES.label, { color: COLORS.accent }]}>{comment.user}</Text>
+              </AnimatedPressable>
               <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 6 }]}>
                 {comment.text}
               </Text>

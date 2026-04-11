@@ -5,15 +5,16 @@ import ScreenShell from "../components/ScreenShell";
 import AnimatedPressable from "../components/AnimatedPressable";
 import ProgressCircle from "../components/ProgressCircle";
 import { APP_STYLES, COLORS } from "../theme";
-import { buildShareMessage, getDaysUntil } from "../utils/activity";
+import { buildShareMessage, formatCurrency, getDaysUntil } from "../utils/activity";
 
 export default function CompletedStackScreen({ route, navigation }) {
   const { stack, total, members = [] } = route.params;
   const daysLeft = getDaysUntil(stack.deadline);
+  const shareMessage = buildShareMessage(stack, total, members.length);
 
   const shareWin = async () => {
     await Share.share({
-      message: buildShareMessage(stack, total, members.length)
+      message: shareMessage
     });
   };
 
@@ -44,10 +45,10 @@ export default function CompletedStackScreen({ route, navigation }) {
       <View style={APP_STYLES.card}>
         <Text style={APP_STYLES.label}>Win card</Text>
         <Text style={[APP_STYLES.subtitle, { color: COLORS.text, fontSize: 18, marginTop: 10 }]}>
-          ${total} saved
+          {formatCurrency(total)} saved
         </Text>
         <Text style={[APP_STYLES.subtitle, { marginTop: 8 }]}>
-          Goal target: ${stack.goal_amount || total}
+          Goal target: {formatCurrency(stack.goal_amount || total)}
         </Text>
         <Text style={[APP_STYLES.subtitle, { marginTop: 8 }]}>
           Team size: {members.length || stack.members?.length || 1}
@@ -57,6 +58,43 @@ export default function CompletedStackScreen({ route, navigation }) {
             {daysLeft >= 0 ? `Finished with ${daysLeft} days to spare` : `Finished ${Math.abs(daysLeft)} days after deadline`}
           </Text>
         ) : null}
+      </View>
+
+      <View
+        style={[
+          APP_STYLES.heroCard,
+          {
+            backgroundColor: "rgba(255, 92, 168, 0.12)",
+            borderColor: "rgba(123, 228, 149, 0.24)"
+          }
+        ]}
+      >
+        <Text style={APP_STYLES.label}>Share preview</Text>
+        <Text style={[APP_STYLES.value, { fontSize: 28 }]}>{stack.name}</Text>
+        <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 12 }]}>
+          {formatCurrency(total)} saved with {members.length || stack.members?.length || 1} teammate{(members.length || stack.members?.length || 1) === 1 ? "" : "s"}.
+        </Text>
+        <Text style={[APP_STYLES.subtitle, { color: COLORS.accent2, marginTop: 10 }]}>
+          {daysLeft === null
+            ? "Finished strong."
+            : daysLeft >= 0
+              ? `${daysLeft} days ahead of schedule.`
+              : `${Math.abs(daysLeft)} days after the deadline, but still complete.`}
+        </Text>
+        <View
+          style={{
+            marginTop: 16,
+            backgroundColor: "rgba(255,255,255,0.06)",
+            borderRadius: 18,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: COLORS.border
+          }}
+        >
+          <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 0 }]}>
+            {shareMessage}
+          </Text>
+        </View>
       </View>
 
       <View style={APP_STYLES.card}>

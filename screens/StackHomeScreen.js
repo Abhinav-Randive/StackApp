@@ -14,6 +14,7 @@ import { APP_STYLES, COLORS } from "../theme";
 import ProgressCircle from "../components/ProgressCircle";
 import { getDaysUntil, getNextMilestone, getStackProgress, isCompletedStack } from "../utils/activity";
 import { isValidDateInput, parsePositiveAmount, sanitizeText } from "../utils/validation";
+import Logo from "../logo1.svg";
 
 export default function HomeScreen({ navigation, route }) {
   const [stacks, setStacks] = useState([]);
@@ -21,15 +22,22 @@ export default function HomeScreen({ navigation, route }) {
   const [name, setName] = useState("");
   const [goalAmount, setGoalAmount] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [search, setSearch] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const q = query(collection(db, "stacks"), where("members", "array-contains", auth.currentUser.uid));
-    return onSnapshot(q, snap => {
-      setStacks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setStacks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      },
+      (err) => {
+        setError(err?.message || "Unable to load stacks right now.");
+      }
+    );
   }, []);
 
   useEffect(() => {
@@ -46,16 +54,22 @@ export default function HomeScreen({ navigation, route }) {
   }, [route?.params?.deletedStackId]);
 
   useEffect(() => {
-    return onSnapshot(collection(db, "contributions"), (snap) => {
-      const nextTotals = {};
+    return onSnapshot(
+      collection(db, "contributions"),
+      (snap) => {
+        const nextTotals = {};
 
-      snap.docs.forEach((docItem) => {
-        const item = docItem.data();
-        nextTotals[item.stack_id] = (nextTotals[item.stack_id] || 0) + (Number(item.amount) || 0);
-      });
+        snap.docs.forEach((docItem) => {
+          const item = docItem.data();
+          nextTotals[item.stack_id] = (nextTotals[item.stack_id] || 0) + (Number(item.amount) || 0);
+        });
 
-      setTotals(nextTotals);
-    });
+        setTotals(nextTotals);
+      },
+      (err) => {
+        setError(err?.message || "Unable to load stack totals right now.");
+      }
+    );
   }, []);
 
   const createStack = async () => {
@@ -85,7 +99,9 @@ export default function HomeScreen({ navigation, route }) {
         goal_amount: parsedGoal,
         deadline: deadline.trim() || "",
         members: [auth.currentUser.uid],
+        admin_ids: [],
         owner_id: auth.currentUser.uid,
+        status: "active",
         created_at: Date.now(),
         last_milestone: 0
       });
@@ -103,6 +119,7 @@ export default function HomeScreen({ navigation, route }) {
   return (
     <ScreenShell title="Stacks" subtitle="Open a stack and keep the progress moving.">
       <View style={APP_STYLES.heroCard}>
+        <Logo width={132} height={58} style={{ marginBottom: 10 }} />
         <Text style={APP_STYLES.label}>Create a new stack</Text>
         <TextInput
           placeholder="Stack name"
@@ -149,10 +166,21 @@ export default function HomeScreen({ navigation, route }) {
         </AnimatedPressable>
       </View>
 
+      <TextInput
+        placeholder="Search stacks"
+        placeholderTextColor={COLORS.muted}
+        value={search}
+        onChangeText={setSearch}
+        style={APP_STYLES.input}
+      />
+
       {stacks
         .filter((s) => {
           const total = totals[s.id] || 0;
-          return showCompleted ? isCompletedStack(s, total) : !isCompletedStack(s, total);
+          const matchesStatus = showCompleted ? isCompletedStack(s, total) : !isCompletedStack(s, total);
+          const matchesSearch = !search.trim()
+            || (s.name || "").toLowerCase().includes(search.trim().toLowerCase());
+          return matchesStatus && matchesSearch;
         })
         .map((s) => {
           const total = totals[s.id] || 0;
@@ -195,6 +223,11 @@ export default function HomeScreen({ navigation, route }) {
                     {daysLeft >= 0 ? `${daysLeft} days left` : `${Math.abs(daysLeft)} days overdue`}
                   </Text>
                 ) : null}
+                {!completed && daysLeft !== null && daysLeft <= 3 ? (
+                  <Text style={[APP_STYLES.subtitle, { marginTop: 6, color: COLORS.accent }]}>
+                    Reminder: this goal is coming up fast.
+                  </Text>
+                ) : null}
               </View>
               <ProgressCircle progress={completed ? 1 : progress} size={68} />
             </AnimatedPressable>
@@ -202,9 +235,14 @@ export default function HomeScreen({ navigation, route }) {
         })}
       {!stacks.filter((s) => {
         const total = totals[s.id] || 0;
-        return showCompleted ? isCompletedStack(s, total) : !isCompletedStack(s, total);
+        const matchesStatus = showCompleted ? isCompletedStack(s, total) : !isCompletedStack(s, total);
+        const matchesSearch = !search.trim()
+          || (s.name || "").toLowerCase().includes(search.trim().toLowerCase());
+        return matchesStatus && matchesSearch;
       }).length ? (
-        <Text style={APP_STYLES.emptyState}>No stacks yet. When one is created, it will land here.</Text>
+        <Text style={APP_STYLES.emptyState}>
+          {search.trim() ? "No stacks match that search yet." : "No stacks yet. When one is created, it will land here."}
+        </Text>
       ) : null}
     </ScreenShell>
   );

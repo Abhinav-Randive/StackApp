@@ -5,11 +5,12 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import ScreenShell from "../components/ScreenShell";
 import AnimatedPressable from "../components/AnimatedPressable";
 import { APP_STYLES, COLORS } from "../theme";
 import { isValidEmail, normalizeEmail } from "../utils/validation";
+import Logo from "../logo1.svg";
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
@@ -33,8 +34,10 @@ export default function LoginScreen({ navigation }) {
     try {
       setLoading(true);
       setError("");
-      await signInWithEmailAndPassword(auth, normalizedEmail, password);
-      navigation.replace("Main");
+      const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      const profileSnap = await getDoc(doc(db, "users", userCredential.user.uid));
+      const profile = profileSnap.exists() ? profileSnap.data() : null;
+      navigation.replace(profile?.onboarding_completed ? "Main" : "Onboarding");
     } catch (err) {
       setError(err?.message || "Unable to sign in right now.");
     } finally {
@@ -59,8 +62,14 @@ export default function LoginScreen({ navigation }) {
       setLoading(true);
       setError("");
       const user = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-      await setDoc(doc(db, "users", user.user.uid), { email: normalizedEmail, friends: [] });
-      navigation.replace("Main");
+      await setDoc(doc(db, "users", user.user.uid), {
+        email: normalizedEmail,
+        friends: [],
+        onboarding_completed: false,
+        bio: "",
+        name: ""
+      });
+      navigation.replace("Onboarding");
     } catch (err) {
       setError(err?.message || "Unable to create your account right now.");
     } finally {
@@ -76,6 +85,7 @@ export default function LoginScreen({ navigation }) {
       subtitle="Pick up where you left off with one clean, consistent home for every savings screen."
     >
       <View style={APP_STYLES.heroCard}>
+        <Logo width={168} height={76} style={{ alignSelf: "center", marginBottom: 14 }} />
         <Text style={APP_STYLES.label}>Welcome back</Text>
 
         <TextInput

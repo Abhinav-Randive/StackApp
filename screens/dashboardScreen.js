@@ -7,7 +7,8 @@ import ScreenShell from "../components/ScreenShell";
 import { APP_STYLES, COLORS } from "../theme";
 import AnimatedPressable from "../components/AnimatedPressable";
 import ProgressCircle from "../components/ProgressCircle";
-import { getDaysUntil, getStackProgress } from "../utils/activity";
+import { getDaysUntil, getInactiveDays, getStackProgress } from "../utils/activity";
+import Logo from "../logo1.svg";
 
 export default function DashboardScreen({ navigation }) {
   const [data, setData] = useState([]);
@@ -16,50 +17,81 @@ export default function DashboardScreen({ navigation }) {
   const [totals, setTotals] = useState({});
   const [activities, setActivities] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const q = query(collection(db, "contributions"), where("user_id", "==", auth.currentUser.uid));
-    return onSnapshot(q, snap => {
-      setData(snap.docs.map(d => d.data()));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setData(snap.docs.map(d => d.data()));
+      },
+      (err) => {
+        setError(err?.message || "Unable to load your totals right now.");
+      }
+    );
   }, []);
 
   useEffect(() => {
     const q = query(collection(db, "notifications"));
-    return onSnapshot(q, (snap) => {
-      const unread = snap.docs
-        .map((item) => item.data())
-        .filter((item) => (item.target_user_ids || []).includes(auth.currentUser.uid))
-        .filter((item) => !(item.read_by || []).includes(auth.currentUser.uid)).length;
-      setUnreadCount(unread);
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        const unread = snap.docs
+          .map((item) => item.data())
+          .filter((item) => (item.target_user_ids || []).includes(auth.currentUser.uid))
+          .filter((item) => !(item.read_by || []).includes(auth.currentUser.uid)).length;
+        setUnreadCount(unread);
+      },
+      (err) => {
+        setError(err?.message || "Unable to load notifications right now.");
+      }
+    );
   }, []);
 
   useEffect(() => {
     const q = query(collection(db, "stacks"), where("members", "array-contains", auth.currentUser.uid));
-    return onSnapshot(q, (snap) => {
-      setStacks(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setStacks(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
+      },
+      (err) => {
+        setError(err?.message || "Unable to load your stacks right now.");
+      }
+    );
   }, []);
 
   useEffect(() => {
-    return onSnapshot(collection(db, "contributions"), (snap) => {
-      const nextTotals = {};
+    return onSnapshot(
+      collection(db, "contributions"),
+      (snap) => {
+        const nextTotals = {};
 
-      snap.docs.forEach((item) => {
-        const dataPoint = item.data();
-        nextTotals[dataPoint.stack_id] = (nextTotals[dataPoint.stack_id] || 0) + (Number(dataPoint.amount) || 0);
-      });
+        snap.docs.forEach((item) => {
+          const dataPoint = item.data();
+          nextTotals[dataPoint.stack_id] = (nextTotals[dataPoint.stack_id] || 0) + (Number(dataPoint.amount) || 0);
+        });
 
-      setTotals(nextTotals);
-    });
+        setTotals(nextTotals);
+      },
+      (err) => {
+        setError(err?.message || "Unable to load contribution totals right now.");
+      }
+    );
   }, []);
 
   useEffect(() => {
     const q = query(collection(db, "activities"));
-    return onSnapshot(q, (snap) => {
-      setActivities(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setActivities(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
+      },
+      (err) => {
+        setError(err?.message || "Unable to load recent activity right now.");
+      }
+    );
   }, []);
 
   useEffect(() => {
@@ -72,17 +104,30 @@ export default function DashboardScreen({ navigation }) {
   }, []);
 
   const total = data.reduce((s, c) => s + c.amount, 0);
+  const firstContributionDone = data.length > 0;
+  const firstStackDone = stacks.length > 0;
+  const firstFriendDone = (profile?.friends || []).length > 0;
+  const onboardingTasks = [
+    { label: "Create your first stack", done: firstStackDone, action: () => navigation.navigate("Stacks") },
+    { label: "Add your first friend", done: firstFriendDone, action: () => navigation.navigate("Friends") },
+    { label: "Make your first contribution", done: firstContributionDone, action: () => navigation.navigate("Stacks") }
+  ];
+  const remainingTasks = onboardingTasks.filter((item) => !item.done);
   const stackSummaries = stacks
     .map((stack) => {
       const saved = totals[stack.id] || 0;
       const progress = getStackProgress(saved, stack.goal_amount);
       const daysLeft = getDaysUntil(stack.deadline);
+      const lastContribution = activities
+        .filter((item) => item.stack_id === stack.id && item.type === "contribution")
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0];
 
       return {
         ...stack,
         saved,
         progress,
-        daysLeft
+        daysLeft,
+        inactiveDays: getInactiveDays(lastContribution?.timestamp)
       };
     })
     .sort((a, b) => b.progress - a.progress);
@@ -97,6 +142,10 @@ export default function DashboardScreen({ navigation }) {
   const dueSoon = [...stackSummaries]
     .filter((stack) => stack.daysLeft !== null)
     .sort((a, b) => a.daysLeft - b.daysLeft)[0];
+
+  const needsNudge = [...stackSummaries]
+    .filter((stack) => stack.progress < 1)
+    .sort((a, b) => (b.inactiveDays || 0) - (a.inactiveDays || 0))[0];
 
   const friendActivity = activities
     .filter((item) => (profile?.friends || []).includes(item.user_id))
@@ -118,7 +167,11 @@ export default function DashboardScreen({ navigation }) {
         </TouchableOpacity>
       )}
     >
+      {error ? (
+        <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
+      ) : null}
       <View style={APP_STYLES.heroCard}>
+        <Logo width={140} height={64} style={{ marginBottom: 12 }} />
         <Text style={APP_STYLES.label}>Total saved</Text>
         <Text style={APP_STYLES.value}>${total}</Text>
         <Text style={[APP_STYLES.subtitle, { color: COLORS.accent2, marginTop: 12 }]}>
@@ -133,6 +186,32 @@ export default function DashboardScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {!profile?.onboarding_completed || remainingTasks.length ? (
+        <View style={APP_STYLES.card}>
+          <Text style={APP_STYLES.label}>Getting started</Text>
+          <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10 }]}>
+            {remainingTasks.length
+              ? `${onboardingTasks.length - remainingTasks.length} of ${onboardingTasks.length} setup steps complete`
+              : "Profile setup complete. Keep going with your first stack rhythm."}
+          </Text>
+          {onboardingTasks.map((task) => (
+            <AnimatedPressable
+              key={task.label}
+              onPress={task.done ? undefined : task.action}
+              style={[
+                task.done ? APP_STYLES.secondaryButton : APP_STYLES.primaryButton,
+                { marginTop: 10 }
+              ]}
+              disabled={task.done}
+            >
+              <Text style={task.done ? APP_STYLES.secondaryButtonText : APP_STYLES.primaryButtonText}>
+                {task.done ? `Done: ${task.label}` : task.label}
+              </Text>
+            </AnimatedPressable>
+          ))}
+        </View>
+      ) : null}
 
       {continueStack ? (
         <AnimatedPressable
@@ -190,6 +269,32 @@ export default function DashboardScreen({ navigation }) {
             <Text style={APP_STYLES.emptyState}>Add a deadline to a stack to track urgency here.</Text>
           )}
         </View>
+      </View>
+
+      <View style={APP_STYLES.card}>
+        <Text style={APP_STYLES.label}>Momentum reminders</Text>
+        {needsNudge ? (
+          <>
+            <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10, fontSize: 18 }]}>
+              {needsNudge.name}
+            </Text>
+            <Text style={[APP_STYLES.subtitle, { marginTop: 8 }]}>
+              {needsNudge.inactiveDays === null
+                ? "No contribution yet. Start this stack to create momentum."
+                : needsNudge.inactiveDays === 0
+                  ? "Already active today. Keep the streak going."
+                  : `${needsNudge.inactiveDays} day${needsNudge.inactiveDays === 1 ? "" : "s"} since the last contribution.`}
+            </Text>
+            <AnimatedPressable
+              onPress={() => navigation.navigate("StackDetail", { stack: needsNudge })}
+              style={APP_STYLES.primaryButton}
+            >
+              <Text style={APP_STYLES.primaryButtonText}>Nudge This Stack</Text>
+            </AnimatedPressable>
+          </>
+        ) : (
+          <Text style={APP_STYLES.emptyState}>Once you have an active stack, reminders will point you to the one losing momentum.</Text>
+        )}
       </View>
 
       <View style={APP_STYLES.card}>

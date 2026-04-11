@@ -16,6 +16,7 @@ import StackScreen from "./screens/stackScreen";
 import PublicProfileScreen from "./screens/PublicProfileScreen";
 import LeaderboardScreen from "./screens/LeaderboardScreen";
 import CompletedStackScreen from "./screens/completedStackScreen";
+import OnboardingScreen from "./screens/onboardingScreen";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -71,6 +72,7 @@ export default function App() {
         <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
         <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />
         <Stack.Screen name="CompletedStack" component={CompletedStackScreen} />
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

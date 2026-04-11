@@ -1,19 +1,19 @@
 import { StyleSheet } from "react-native";
 
 export const COLORS = {
-  bg: ["#140f1f", "#1b1530", "#12201b"],
-  card: "rgba(23, 20, 38, 0.82)",
-  cardStrong: "rgba(34, 28, 54, 0.92)",
-  border: "rgba(255, 255, 255, 0.08)",
-  text: "#FFF7FB",
-  subtext: "#CDBFD2",
-  muted: "#9F92AD",
-  input: "rgba(255, 255, 255, 0.08)",
+  bg: ["#2a1734", "#3a2043", "#22382c"],
+  card: "rgba(46, 30, 58, 0.78)",
+  cardStrong: "rgba(63, 40, 78, 0.9)",
+  border: "rgba(255, 255, 255, 0.12)",
+  text: "#FFF8FC",
+  subtext: "#E2CDE2",
+  muted: "#BDA7C1",
+  input: "rgba(255, 255, 255, 0.11)",
   accent: "#FF5CA8",
   accent2: "#7BE495",
   accentSoft: "rgba(123, 228, 149, 0.16)",
   danger: "#FF7D92",
-  tab: "#120f1f"
+  tab: "#24162f"
 };
 
 export const APP_STYLES = StyleSheet.create({
