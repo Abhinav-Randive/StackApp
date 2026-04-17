@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Alert, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { db, auth } from "../firebase";
 import {
   addDoc,
@@ -31,6 +31,7 @@ import {
   isCompletedStack
 } from "../utils/activity";
 import { isValidDateInput, parsePositiveAmount, sanitizeText } from "../utils/validation";
+import { confirmAction } from "../utils/platform";
 
 export default function StackScreen({ route, navigation }) {
   const { stack: initialStack } = route.params;
@@ -247,38 +248,30 @@ export default function StackScreen({ route, navigation }) {
 
   const leaveStack = async () => {
     if (stack.owner_id === auth.currentUser.uid) {
-      Alert.alert("Owner can’t leave", "Delete the stack or remove other members first.");
+      setError("Owners can’t leave their own stack. Delete it or remove other members first.");
       return;
     }
 
-    Alert.alert("Leave stack?", "You’ll stop seeing this stack and its updates.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Leave",
-        style: "destructive",
-        onPress: async () => {
-          await updateDoc(doc(db, "stacks", stack.id), {
-            members: arrayRemove(auth.currentUser.uid)
-          });
-          navigation.goBack();
-        }
-      }
-    ]);
+    const confirmed = await confirmAction("Leave stack?", "You’ll stop seeing this stack and its updates.");
+    if (!confirmed) {
+      return;
+    }
+
+    await updateDoc(doc(db, "stacks", stack.id), {
+      members: arrayRemove(auth.currentUser.uid)
+    });
+    navigation.goBack();
   };
 
   const removeMember = async (memberId) => {
-    Alert.alert("Remove member?", "They’ll lose access to this stack.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: async () => {
-          await updateDoc(doc(db, "stacks", stack.id), {
-            members: arrayRemove(memberId)
-          });
-        }
-      }
-    ]);
+    const confirmed = await confirmAction("Remove member?", "They’ll lose access to this stack.");
+    if (!confirmed) {
+      return;
+    }
+
+    await updateDoc(doc(db, "stacks", stack.id), {
+      members: arrayRemove(memberId)
+    });
   };
 
   const toggleAdmin = async (memberId, shouldPromote) => {
@@ -293,44 +286,43 @@ export default function StackScreen({ route, navigation }) {
   };
 
   const removeStack = async () => {
-    Alert.alert("Delete stack?", "This will remove the stack, contributions, and related activity.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setError("");
-            const contributionSnapshot = await getDocs(
-              query(collection(db, "contributions"), where("stack_id", "==", stack.id))
-            );
-            const activitySnapshot = await getDocs(
-              query(collection(db, "activities"), where("stack_id", "==", stack.id))
-            );
-            const notificationSnapshot = await getDocs(
-              query(collection(db, "notifications"), where("stack_id", "==", stack.id))
-            );
+    const confirmed = await confirmAction(
+      "Delete stack?",
+      "This will remove the stack, contributions, and related activity."
+    );
+    if (!confirmed) {
+      return;
+    }
 
-            await Promise.all([
-              ...contributionSnapshot.docs.map((item) => deleteDoc(item.ref)),
-              ...activitySnapshot.docs.map((item) => deleteDoc(item.ref)),
-              ...notificationSnapshot.docs.map((item) => deleteDoc(item.ref))
-            ]);
+    try {
+      setError("");
+      const contributionSnapshot = await getDocs(
+        query(collection(db, "contributions"), where("stack_id", "==", stack.id))
+      );
+      const activitySnapshot = await getDocs(
+        query(collection(db, "activities"), where("stack_id", "==", stack.id))
+      );
+      const notificationSnapshot = await getDocs(
+        query(collection(db, "notifications"), where("stack_id", "==", stack.id))
+      );
 
-            await deleteDoc(doc(db, "stacks", stack.id));
-            navigation.navigate("Main", {
-              screen: "Stacks",
-              params: {
-                deletedStackId: stack.id,
-                deletedAt: Date.now()
-              }
-            });
-          } catch (err) {
-            setError(err?.message || "Unable to delete this stack right now.");
-          }
+      await Promise.all([
+        ...contributionSnapshot.docs.map((item) => deleteDoc(item.ref)),
+        ...activitySnapshot.docs.map((item) => deleteDoc(item.ref)),
+        ...notificationSnapshot.docs.map((item) => deleteDoc(item.ref))
+      ]);
+
+      await deleteDoc(doc(db, "stacks", stack.id));
+      navigation.navigate("Main", {
+        screen: "Stacks",
+        params: {
+          deletedStackId: stack.id,
+          deletedAt: Date.now()
         }
-      }
-    ]);
+      });
+    } catch (err) {
+      setError(err?.message || "Unable to delete this stack right now.");
+    }
   };
 
   return (

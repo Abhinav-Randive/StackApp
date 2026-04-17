@@ -6,6 +6,7 @@ import AnimatedPressable from "../components/AnimatedPressable";
 import ProgressCircle from "../components/ProgressCircle";
 import { APP_STYLES, COLORS } from "../theme";
 import { buildShareMessage, formatCurrency, getDaysUntil } from "../utils/activity";
+import { shareText } from "../utils/platform";
 
 export default function CompletedStackScreen({ route, navigation }) {
   const { stack, total, members = [] } = route.params;
@@ -13,9 +14,13 @@ export default function CompletedStackScreen({ route, navigation }) {
   const shareMessage = buildShareMessage(stack, total, members.length);
 
   const shareWin = async () => {
-    await Share.share({
-      message: shareMessage
-    });
+    const result = await shareText(shareMessage);
+
+    if (result === "native") {
+      await Share.share({
+        message: shareMessage
+      });
+    }
   };
 
   return (
