@@ -4,11 +4,12 @@ import { getFirestore } from "firebase/firestore";
 
 // Debug: Log all available env vars
 if (typeof window !== "undefined") {
-  console.log("🔍 Available environment variables:");
-  console.log("EXPO_PUBLIC_FIREBASE_PROJECT_ID:", process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ? "✅" : "❌");
-  console.log("EXPO_PUBLIC_FIREBASE_API_KEY:", process.env.EXPO_PUBLIC_FIREBASE_API_KEY ? "✅" : "❌");
-  console.log("EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN:", process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ? "✅" : "❌");
-  console.log("EXPO_PUBLIC_FIREBASE_APP_ID:", process.env.EXPO_PUBLIC_FIREBASE_APP_ID ? "✅" : "❌");
+  console.log("🔍 Firebase Initialization Debug:");
+  console.log("Node env:", process.env.NODE_ENV);
+  console.log("EXPO_PUBLIC_FIREBASE_PROJECT_ID:", process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ? "✅ set" : "❌ missing");
+  console.log("EXPO_PUBLIC_FIREBASE_API_KEY:", process.env.EXPO_PUBLIC_FIREBASE_API_KEY ? "✅ set" : "❌ missing");
+  console.log("EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN:", process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ? "✅ set" : "❌ missing");
+  console.log("EXPO_PUBLIC_FIREBASE_APP_ID:", process.env.EXPO_PUBLIC_FIREBASE_APP_ID ? "✅ set" : "❌ missing");
 }
 
 const firebaseConfig = {
@@ -20,32 +21,21 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:59631077914:web:4704a47eb06247a1615fa3"
 };
 
-console.log("🔧 Firebase Config (using values):", {
+console.log("🔧 Firebase Config Using:", {
   projectId: firebaseConfig.projectId,
-  authDomain: firebaseConfig.authDomain,
-  appId: firebaseConfig.appId ? "***" : "MISSING"
+  authDomain: firebaseConfig.authDomain
 });
-
-// Validate Firebase config
-const requiredFields = ["apiKey", "projectId", "appId", "authDomain"];
-const missingFields = requiredFields.filter(field => !firebaseConfig[field]);
-
-if (missingFields.length > 0) {
-  console.error("❌ Firebase config missing required fields:", missingFields);
-  console.error("💡 On Vercel: Ensure EXPO_PUBLIC_* env vars are set in project Settings > Environment Variables");
-  console.error("   Then redeploy the project");
-  throw new Error(`Firebase initialization failed. Missing: ${missingFields.join(", ")}`);
-}
 
 // Initialize Firebase (prevent double initialization)
 let app;
 let auth;
 let db;
+let firebaseError = null;
 
 try {
   if (!getApps().length) {
     app = initializeApp(firebaseConfig);
-    console.log("✅ Firebase app initialized");
+    console.log("✅ Firebase app initialized successfully");
   } else {
     app = getApps()[0];
     console.log("✅ Firebase app already initialized");
@@ -54,27 +44,30 @@ try {
   // Initialize auth and firestore
   auth = getAuth(app);
   db = getFirestore(app);
-  console.log("✅ Firebase services ready (auth + firestore)");
+  console.log("✅ Firebase auth and firestore ready");
   
 } catch (error) {
-  console.error("❌ Firebase initialization failed:", error.message);
-  console.error("📋 Full error:", error);
+  console.error("❌ Firebase initialization error:", error.message);
+  console.error("📋 Full error details:", error);
+  
+  firebaseError = error;
   
   // Provide detailed debugging info
   if (typeof window !== "undefined") {
     const hostname = window.location.hostname;
-    console.error("🌐 Current hostname:", hostname);
+    console.error("🌐 Running on:", hostname);
     
     if (hostname.includes("vercel.app")) {
-      console.error("⚠️  Running on Vercel. Checklist:");
-      console.error("  1. Did you add all 6 EXPO_PUBLIC_* variables to Vercel Settings?");
-      console.error("  2. Did you click 'Redeploy' after adding env vars?");
-      console.error("  3. Did you add your domain to Firebase > Authentication > Authorized domains?");
+      console.error("⚠️ VERCEL DEPLOYMENT CHECKLIST:");
+      console.error("  1️⃣ Go to https://vercel.com/dashboard → select 'stack-app'");
+      console.error("  2️⃣ Settings → Environment Variables");
+      console.error("  3️⃣ Add all 6 EXPO_PUBLIC_* variables (copy from your .env file)");
+      console.error("  4️⃣ Click 'Redeploy' from Deployments tab");
+      console.error("  5️⃣ Also add your domain to Firebase Console > Authentication > Authorized domains");
     }
   }
-  
-  throw error;
 }
 
-export { app, auth, db };
+// Export auth and db (may be undefined if initialization failed)
+export { app, auth, db, firebaseError };
 
