@@ -43,6 +43,5 @@ app-example
 /android
 
 # Firebase config (contains API keys)
-firebase.js
 .env
 .vercel
