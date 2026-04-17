@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { auth, db } from "../firebase";
 import {
   arrayRemove,
@@ -10,7 +11,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  setDoc,
   updateDoc,
   where
 } from "firebase/firestore";
@@ -18,7 +18,6 @@ import ScreenShell from "../components/ScreenShell";
 import AnimatedPressable from "../components/AnimatedPressable";
 import { APP_STYLES, COLORS } from "../theme";
 import { createNotification, formatActivityLine, formatCurrency, getInitials } from "../utils/activity";
-import { DEMO_ACTIVITIES } from "../utils/demoUsers";
 import { sanitizeText } from "../utils/validation";
 
 export default function FeedScreen({ navigation }) {
@@ -182,20 +181,6 @@ export default function FeedScreen({ navigation }) {
     }
   };
 
-  const seedDemoActivity = async () => {
-    try {
-      setError("");
-      await Promise.all(
-        DEMO_ACTIVITIES.map((item, index) => setDoc(doc(db, "activities", item.id), {
-          ...item,
-          timestamp: Date.now() - index * 1000 * 60 * 22
-        }))
-      );
-    } catch (err) {
-      setError(err?.message || "Unable to load demo activity right now.");
-    }
-  };
-
   const filteredActivities = activities.filter((item) => {
     if (filter === "Friends") {
       return (profile?.friends || []).includes(item.user_id);
@@ -209,18 +194,7 @@ export default function FeedScreen({ navigation }) {
   });
 
   return (
-    <ScreenShell
-      title="Activity"
-      subtitle="See what the community is adding in real time."
-      headerAction={(
-        <AnimatedPressable
-          onPress={seedDemoActivity}
-          style={[APP_STYLES.secondaryButton, { marginTop: 0, paddingVertical: 10, paddingHorizontal: 14 }]}
-        >
-          <Text style={APP_STYLES.secondaryButtonText}>Load Demo</Text>
-        </AnimatedPressable>
-      )}
-    >
+    <ScreenShell title="Activity" subtitle="See what the community is adding in real time.">
       {error ? (
         <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
       ) : null}
@@ -284,25 +258,45 @@ export default function FeedScreen({ navigation }) {
           <View style={[APP_STYLES.row, { marginTop: 14 }]}>
             <AnimatedPressable
               onPress={() => toggleLike(item)}
-              style={[APP_STYLES.secondaryButton, { flex: 1, marginTop: 0, marginRight: 8 }]}
+              style={[APP_STYLES.secondaryButton, { flex: 1, marginTop: 0, marginRight: 8, flexDirection: "row" }]}
               disabled={busyKey === `like-${item.id}`}
             >
-              <Text style={APP_STYLES.secondaryButtonText}>
-                {(item.likes || []).includes(auth.currentUser.uid) ? "Liked" : "Like"} ({item.likes?.length || 0})
-              </Text>
+              <Ionicons
+                name={(item.likes || []).includes(auth.currentUser.uid) ? "thumbs-up" : "thumbs-up-outline"}
+                size={18}
+                color={COLORS.accent2}
+                style={{ marginRight: 8 }}
+              />
+              <Text style={APP_STYLES.secondaryButtonText}>{item.likes?.length || 0}</Text>
             </AnimatedPressable>
-            {["heart", "fire", "clap"].map((reaction) => (
+            {[
+              { key: "heart", icon: "heart", activeIcon: "heart", color: COLORS.accent },
+              { key: "fire", icon: "flame-outline", activeIcon: "flame", color: "#FF9D57" },
+              { key: "clap", icon: "sparkles-outline", activeIcon: "sparkles", color: COLORS.accent2 }
+            ].map((reaction) => (
               <AnimatedPressable
-                key={reaction}
-                onPress={() => toggleReaction(item, reaction)}
-                style={[APP_STYLES.secondaryButton, { marginTop: 0, marginRight: reaction === "clap" ? 0 : 8, paddingHorizontal: 12 }]}
-              disabled={busyKey === `reaction-${reaction}-${item.id}`}
-            >
-              <Text style={APP_STYLES.secondaryButtonText}>
-                  {reaction === "heart" ? "Love" : reaction === "fire" ? "Fire" : "Cheer"} ({item.reactions?.[reaction]?.length || 0})
-              </Text>
-            </AnimatedPressable>
-          ))}
+                key={reaction.key}
+                onPress={() => toggleReaction(item, reaction.key)}
+                style={[
+                  APP_STYLES.secondaryButton,
+                  {
+                    marginTop: 0,
+                    marginRight: reaction.key === "clap" ? 0 : 8,
+                    paddingHorizontal: 12,
+                    flexDirection: "row"
+                  }
+                ]}
+                disabled={busyKey === `reaction-${reaction.key}-${item.id}`}
+              >
+                <Ionicons
+                  name={(item.reactions?.[reaction.key] || []).includes(auth.currentUser.uid) ? reaction.activeIcon : reaction.icon}
+                  size={18}
+                  color={reaction.color}
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={APP_STYLES.secondaryButtonText}>{item.reactions?.[reaction.key]?.length || 0}</Text>
+              </AnimatedPressable>
+            ))}
           </View>
 
           {(item.comments || []).map((comment, index) => (

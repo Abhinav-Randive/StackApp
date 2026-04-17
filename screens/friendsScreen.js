@@ -11,7 +11,6 @@ import {
 import ScreenShell from "../components/ScreenShell";
 import { APP_STYLES, COLORS } from "../theme";
 import { isValidEmail, normalizeEmail } from "../utils/validation";
-import { DEMO_USERS } from "../utils/demoUsers";
 
 export default function FriendsScreen({ navigation }) {
   const [email, setEmail] = useState("");
@@ -136,26 +135,6 @@ export default function FriendsScreen({ navigation }) {
           {friends.length ? "No friends match that search yet." : "No friends added yet. Invite someone to get started."}
         </Text>
       ) : null}
-
-      <View style={APP_STYLES.card}>
-        <Text style={APP_STYLES.label}>Demo community</Text>
-        <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10 }]}>
-          Open these sample profiles to test the richer public-profile flow.
-        </Text>
-        {DEMO_USERS.filter((friend) => {
-          const queryValue = search.trim().toLowerCase();
-          if (!queryValue) return true;
-          return `${friend.name} ${friend.email}`.toLowerCase().includes(queryValue);
-        }).map((friend) => (
-          <TouchableOpacity
-            key={friend.id}
-            onPress={() => navigation.navigate("PublicProfile", { userId: friend.id })}
-            style={[APP_STYLES.secondaryButton, { marginTop: 10 }]}
-          >
-            <Text style={APP_STYLES.secondaryButtonText}>{friend.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
     </ScreenShell>
   );
 }

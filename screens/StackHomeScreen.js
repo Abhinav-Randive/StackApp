@@ -10,11 +10,11 @@ import {
 } from "firebase/firestore";
 import ScreenShell from "../components/ScreenShell";
 import AnimatedPressable from "../components/AnimatedPressable";
+import BrandLogo from "../components/BrandLogo";
 import { APP_STYLES, COLORS } from "../theme";
 import ProgressCircle from "../components/ProgressCircle";
 import { getDaysUntil, getNextMilestone, getStackProgress, isCompletedStack } from "../utils/activity";
 import { isValidDateInput, parsePositiveAmount, sanitizeText } from "../utils/validation";
-import Logo from "../logo1.svg";
 
 export default function HomeScreen({ navigation, route }) {
   const [stacks, setStacks] = useState([]);
@@ -119,7 +119,7 @@ export default function HomeScreen({ navigation, route }) {
   return (
     <ScreenShell title="Stacks" subtitle="Open a stack and keep the progress moving.">
       <View style={APP_STYLES.heroCard}>
-        <Logo width={132} height={58} style={{ marginBottom: 10 }} />
+        <BrandLogo width={132} height={58} style={{ marginBottom: 10 }} />
         <Text style={APP_STYLES.label}>Create a new stack</Text>
         <TextInput
           placeholder="Stack name"

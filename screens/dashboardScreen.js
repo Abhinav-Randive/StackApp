@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from "react";
-import { TouchableOpacity, View, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { db, auth } from "../firebase";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-import ScreenShell from "../components/ScreenShell";
-import { APP_STYLES, COLORS } from "../theme";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import AnimatedPressable from "../components/AnimatedPressable";
+import BrandLogo from "../components/BrandLogo";
 import ProgressCircle from "../components/ProgressCircle";
+import ScreenShell from "../components/ScreenShell";
+import { auth, db } from "../firebase";
+import { APP_STYLES, COLORS } from "../theme";
 import { getDaysUntil, getInactiveDays, getStackProgress } from "../utils/activity";
-import Logo from "../logo1.svg";
 
 export default function DashboardScreen({ navigation }) {
   const [data, setData] = useState([]);
@@ -18,6 +18,7 @@ export default function DashboardScreen({ navigation }) {
   const [activities, setActivities] = useState([]);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState("");
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
 
   useEffect(() => {
     const q = query(collection(db, "contributions"), where("user_id", "==", auth.currentUser.uid));
@@ -100,6 +101,8 @@ export default function DashboardScreen({ navigation }) {
       if (!snap.empty) {
         setProfile({ id: snap.docs[0].id, ...snap.docs[0].data() });
       }
+      // Mark initial load as complete once profile is fetched
+      setIsLoadingInitial(false);
     });
   }, []);
 
@@ -169,9 +172,12 @@ export default function DashboardScreen({ navigation }) {
     >
       {error ? (
         <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
-      ) : null}
-      <View style={APP_STYLES.heroCard}>
-        <Logo width={140} height={64} style={{ marginBottom: 12 }} />
+      ) : null}      {isLoadingInitial ? (
+        <View style={{ justifyContent: "center", alignItems: "center", marginTop: 40 }}>
+          <ActivityIndicator size="large" color={COLORS.accent2} />
+        </View>
+      ) : null}      <View style={APP_STYLES.heroCard}>
+        <BrandLogo width={140} height={64} style={{ marginBottom: 12 }} />
         <Text style={APP_STYLES.label}>Total saved</Text>
         <Text style={APP_STYLES.value}>${total}</Text>
         <Text style={[APP_STYLES.subtitle, { color: COLORS.accent2, marginTop: 12 }]}>

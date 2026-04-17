@@ -18,7 +18,6 @@ import {
   getContributionStreak,
   getInitials
 } from "../utils/activity";
-import { getDemoUserById } from "../utils/demoUsers";
 
 export default function PublicProfileScreen({ route, navigation }) {
   const { userId } = route.params;
@@ -31,17 +30,14 @@ export default function PublicProfileScreen({ route, navigation }) {
     const fetch = async () => {
       try {
         setError("");
-        const demoUser = getDemoUserById(userId);
         const userSnap = await getDoc(doc(db, "users", userId));
 
-        if (userSnap.exists()) {
-          setProfile({ id: userId, ...userSnap.data(), isDemo: false });
-        } else if (demoUser) {
-          setProfile({ ...demoUser, isDemo: true });
-        } else {
+        if (!userSnap.exists()) {
           setError("This profile is unavailable right now.");
           return;
         }
+
+        setProfile({ id: userId, ...userSnap.data() });
 
         const contributionQuery = query(collection(db, "contributions"), where("user_id", "==", userId));
         const contributionSnap = await getDocs(contributionQuery);
@@ -51,15 +47,6 @@ export default function PublicProfileScreen({ route, navigation }) {
         const activitySnap = await getDocs(activityQuery);
         setActivities(activitySnap.docs.map((item) => ({ id: item.id, ...item.data() })));
       } catch (err) {
-        const demoUser = getDemoUserById(userId);
-        if (demoUser) {
-          setProfile({ ...demoUser, isDemo: true });
-          setContributions([]);
-          setActivities([]);
-          setError("");
-          return;
-        }
-
         setError(err?.message || "Unable to load this profile right now.");
       }
     };
@@ -77,27 +64,20 @@ export default function PublicProfileScreen({ route, navigation }) {
     );
   }
 
-  const totalSaved = profile.isDemo
-    ? profile.stats?.totalSaved || 0
-    : contributions.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-  const streakDays = profile.isDemo
-    ? profile.stats?.streakDays || 0
-    : getContributionStreak(contributions);
-
-  const completedStacks = profile.isDemo
-    ? (profile.completedStacks || []).map((name) => ({ id: `demo-${name}`, name }))
-    : [...new Map(
-      activities
-        .filter((item) => item.type === "milestone" && Number(item.metadata?.milestone) === 100 && item.stack_name)
-        .map((item) => [item.stack_name, { id: item.stack_id || item.stack_name, name: item.stack_name, stackId: item.stack_id }])
-    ).values()];
+  const totalSaved = contributions.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  const streakDays = getContributionStreak(contributions);
+  const completedStacks = [...new Map(
+    activities
+      .filter((item) => item.type === "milestone" && Number(item.metadata?.milestone) === 100 && item.stack_name)
+      .map((item) => [item.stack_name, { id: item.stack_id || item.stack_name, name: item.stack_name, stackId: item.stack_id }])
+  ).values()];
 
   const badges = buildProfileBadges({
     totalSaved,
-    completedCount: profile.isDemo ? profile.stats?.completedCount || completedStacks.length : completedStacks.length,
+    completedCount: completedStacks.length,
     friendCount: (profile.friends || []).length,
     streakDays,
-    stackCount: profile.isDemo ? profile.stats?.stackCount || 0 : new Set(activities.map((item) => item.stack_name).filter(Boolean)).size
+    stackCount: new Set(activities.map((item) => item.stack_name).filter(Boolean)).size
   });
 
   return (
@@ -120,12 +100,6 @@ export default function PublicProfileScreen({ route, navigation }) {
         <Text style={[APP_STYLES.subtitle, { textAlign: "center" }]}>
           {profile.bio || "No bio yet."}
         </Text>
-
-        {profile.isDemo ? (
-          <Text style={[APP_STYLES.subtitle, { color: COLORS.accent2, marginTop: 10 }]}>
-            Demo community profile
-          </Text>
-        ) : null}
       </View>
 
       <View style={[APP_STYLES.row, { alignItems: "stretch" }]}>
@@ -166,19 +140,13 @@ export default function PublicProfileScreen({ route, navigation }) {
         <Text style={APP_STYLES.label}>Completed stacks</Text>
         {completedStacks.length ? (
           completedStacks.slice(0, 3).map((stack) => (
-            stack.stackId ? (
-              <AnimatedPressable
-                key={stack.id}
-                onPress={() => navigation.navigate("StackDetail", { stack: { id: stack.stackId, name: stack.name } })}
-                style={[APP_STYLES.secondaryButton, { marginTop: 10 }]}
-              >
-                <Text style={APP_STYLES.secondaryButtonText}>{stack.name}</Text>
-              </AnimatedPressable>
-            ) : (
-              <View key={stack.id} style={[APP_STYLES.card, { marginTop: 10, padding: 14, borderRadius: 16 }]}>
-                <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 0 }]}>{stack.name}</Text>
-              </View>
-            )
+            <AnimatedPressable
+              key={stack.id}
+              onPress={() => navigation.navigate("StackDetail", { stack: { id: stack.stackId, name: stack.name } })}
+              style={[APP_STYLES.secondaryButton, { marginTop: 10 }]}
+            >
+              <Text style={APP_STYLES.secondaryButtonText}>{stack.name}</Text>
+            </AnimatedPressable>
           ))
         ) : (
           <Text style={APP_STYLES.emptyState}>Completed stacks will show up here as this saver reaches their goals.</Text>
