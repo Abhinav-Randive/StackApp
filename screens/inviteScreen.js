@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Text,
+  TextInput,
   TouchableOpacity
 } from "react-native";
 import { db, auth } from "../firebase";
@@ -16,6 +17,9 @@ import { APP_STYLES, COLORS } from "../theme";
 export default function InviteScreen({ route, navigation }) {
   const { stack } = route.params;
   const [friends, setFriends] = useState([]);
+  const [search, setSearch] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const fetchFriends = async () => {
@@ -36,12 +40,29 @@ export default function InviteScreen({ route, navigation }) {
   }, []);
 
   const invite = async (friendId) => {
-    await updateDoc(doc(db, "stacks", stack.id), {
-      members: arrayUnion(friendId)
-    });
+    try {
+      setBusyId(friendId);
+      setError("");
+      await updateDoc(doc(db, "stacks", stack.id), {
+        members: arrayUnion(friendId)
+      });
 
-    navigation.goBack();
+      navigation.goBack();
+    } catch (err) {
+      setError(err?.message || "Unable to invite friend right now.");
+    } finally {
+      setBusyId("");
+    }
   };
+
+  const filteredFriends = friends.filter((friend) => {
+    const queryValue = search.trim().toLowerCase();
+    if (!queryValue) {
+      return true;
+    }
+
+    return `${friend.name || ""} ${friend.email || ""}`.toLowerCase().includes(queryValue);
+  });
 
   return (
     <ScreenShell
@@ -53,19 +74,45 @@ export default function InviteScreen({ route, navigation }) {
         </TouchableOpacity>
       )}
     >
-      {friends.map((friend) => (
+      {error ? (
+        <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
+      ) : null}
+
+      <TextInput
+        placeholder="Search friends to invite"
+        placeholderTextColor={COLORS.muted}
+        value={search}
+        onChangeText={setSearch}
+        style={APP_STYLES.input}
+      />
+
+      {filteredFriends.map((friend) => {
+        const alreadyInStack = (stack.members || []).includes(friend.id);
+
+        return (
         <TouchableOpacity
           key={friend.id}
-          onPress={() => invite(friend.id)}
-          style={APP_STYLES.card}
+          onPress={() => (alreadyInStack ? null : invite(friend.id))}
+          style={[
+            APP_STYLES.card,
+            busyId === friend.id ? { opacity: 0.55 } : null,
+            alreadyInStack ? { borderColor: COLORS.accent2 } : null
+          ]}
+          disabled={!!busyId || alreadyInStack}
         >
           <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 0 }]}>
-            {friend.email}
+            {friend.name || friend.email}
+          </Text>
+          <Text style={[APP_STYLES.subtitle, { marginTop: 6 }]}>
+            {alreadyInStack ? "Already in this stack" : busyId === friend.id ? "Inviting..." : friend.email}
           </Text>
         </TouchableOpacity>
-      ))}
-      {!friends.length ? (
-        <Text style={APP_STYLES.emptyState}>Add friends first, then they will show up here to invite.</Text>
+        );
+      })}
+      {!filteredFriends.length ? (
+        <Text style={APP_STYLES.emptyState}>
+          {friends.length ? "No friends match that search yet." : "Add friends first, then they will show up here to invite."}
+        </Text>
       ) : null}
     </ScreenShell>
   );

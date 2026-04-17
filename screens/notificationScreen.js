@@ -19,16 +19,23 @@ import { formatNotificationLine } from "../utils/activity";
 
 export default function NotificationScreen({ navigation }) {
   const [items, setItems] = useState([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const q = query(collection(db, "notifications"), orderBy("timestamp", "desc"));
-    return onSnapshot(q, (snap) => {
-      setItems(
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((item) => (item.target_user_ids || []).includes(auth.currentUser.uid))
-      );
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setItems(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((item) => (item.target_user_ids || []).includes(auth.currentUser.uid))
+        );
+      },
+      (err) => {
+        setError(err?.message || "Unable to load notifications right now.");
+      }
+    );
   }, []);
 
   const markAsRead = async (itemId) => {
@@ -77,6 +84,9 @@ export default function NotificationScreen({ navigation }) {
         </AnimatedPressable>
       )}
     >
+      {error ? (
+        <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
+      ) : null}
       {items.map((item) => (
         <AnimatedPressable
           key={item.id}

@@ -7,7 +7,7 @@ import Animated, {
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 
-export default function AnimatedPressable({ children, onPress, style }) {
+export default function AnimatedPressable({ children, onPress, style, disabled = false }) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -17,18 +17,22 @@ export default function AnimatedPressable({ children, onPress, style }) {
   return (
     <Animated.View style={animatedStyle}>
       <TouchableOpacity
-        activeOpacity={0.9}
+        activeOpacity={disabled ? 1 : 0.9}
+        disabled={disabled}
         onPressIn={() => {
+          if (disabled) return;
           scale.value = withSpring(0.96);
         }}
         onPressOut={() => {
+          if (disabled) return;
           scale.value = withSpring(1);
         }}
         onPress={() => {
+          if (disabled) return;
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           onPress && onPress();
         }}
-        style={style}
+        style={[style, disabled ? { opacity: 0.55 } : null]}
       >
         {children}
       </TouchableOpacity>
