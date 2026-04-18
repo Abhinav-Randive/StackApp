@@ -8,7 +8,14 @@ import ProgressCircle from "../components/ProgressCircle";
 import ScreenShell from "../components/ScreenShell";
 import { auth, db } from "../firebase";
 import { APP_STYLES, COLORS } from "../theme";
-import { getDaysUntil, getInactiveDays, getStackProgress } from "../utils/activity";
+import {
+  getChallengeLabel,
+  getDaysUntil,
+  getInactiveDays,
+  getProjectedValue,
+  getStackProgress,
+  STACK_TYPES
+} from "../utils/activity";
 
 export default function DashboardScreen({ navigation }) {
   const [data, setData] = useState([]);
@@ -146,6 +153,17 @@ export default function DashboardScreen({ navigation }) {
     .filter((stack) => stack.daysLeft !== null)
     .sort((a, b) => a.daysLeft - b.daysLeft)[0];
 
+  const investingStacks = stackSummaries.filter((stack) => stack.stack_type === STACK_TYPES.INVESTING);
+  const savingsStacks = stackSummaries.filter((stack) => stack.stack_type !== STACK_TYPES.INVESTING);
+  const investingTotal = investingStacks.reduce((sum, stack) => sum + stack.saved, 0);
+  const projectedInvestingTotal = investingStacks.reduce(
+    (sum, stack) => sum + getProjectedValue(stack.saved, stack.risk_level, 12),
+    0
+  );
+  const activeInvestingChallenge = investingStacks
+    .filter((stack) => stack.progress < 1)
+    .sort((a, b) => b.progress - a.progress)[0];
+
   const needsNudge = [...stackSummaries]
     .filter((stack) => stack.progress < 1)
     .sort((a, b) => (b.inactiveDays || 0) - (a.inactiveDays || 0))[0];
@@ -190,6 +208,23 @@ export default function DashboardScreen({ navigation }) {
           <TouchableOpacity onPress={() => navigation.navigate("Stacks")} style={[APP_STYLES.primaryButton, { flex: 1, marginTop: 0 }]}>
             <Text style={APP_STYLES.primaryButtonText}>Open Stacks</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={[APP_STYLES.row, { alignItems: "stretch" }]}>
+        <View style={[APP_STYLES.card, { flex: 1, marginRight: 8 }]}>
+          <Text style={APP_STYLES.label}>Savings goals</Text>
+          <Text style={[APP_STYLES.value, { fontSize: 24 }]}>{savingsStacks.length}</Text>
+          <Text style={[APP_STYLES.subtitle, { marginTop: 8 }]}>
+            ${savingsStacks.reduce((sum, stack) => sum + stack.saved, 0)} currently stacked
+          </Text>
+        </View>
+        <View style={[APP_STYLES.card, { flex: 1, marginLeft: 8 }]}>
+          <Text style={APP_STYLES.label}>Investing goals</Text>
+          <Text style={[APP_STYLES.value, { fontSize: 24 }]}>{investingStacks.length}</Text>
+          <Text style={[APP_STYLES.subtitle, { marginTop: 8 }]}>
+            ${investingTotal} now, ${projectedInvestingTotal} projected in 12m
+          </Text>
         </View>
       </View>
 
@@ -304,6 +339,31 @@ export default function DashboardScreen({ navigation }) {
       </View>
 
       <View style={APP_STYLES.card}>
+        <Text style={APP_STYLES.label}>Invest together</Text>
+        {activeInvestingChallenge ? (
+          <>
+            <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10, fontSize: 18 }]}>
+              {activeInvestingChallenge.name}
+            </Text>
+            <Text style={[APP_STYLES.subtitle, { marginTop: 8 }]}>
+              {getChallengeLabel(activeInvestingChallenge.challenge_key)}
+            </Text>
+            <Text style={[APP_STYLES.subtitle, { color: COLORS.accent2, marginTop: 8 }]}>
+              {Math.round(activeInvestingChallenge.progress * 100)}% of the group goal reached
+            </Text>
+            <AnimatedPressable
+              onPress={() => navigation.navigate("StackDetail", { stack: activeInvestingChallenge })}
+              style={APP_STYLES.primaryButton}
+            >
+              <Text style={APP_STYLES.primaryButtonText}>Open Investing Stack</Text>
+            </AnimatedPressable>
+          </>
+        ) : (
+          <Text style={APP_STYLES.emptyState}>Create an investing stack to turn saving momentum into a group investing habit.</Text>
+        )}
+      </View>
+
+      <View style={APP_STYLES.card}>
         <Text style={APP_STYLES.label}>Recent friend activity</Text>
         {friendActivity.length ? (
           friendActivity.map((item) => (
@@ -319,6 +379,8 @@ export default function DashboardScreen({ navigation }) {
                   ? `Added $${item.amount || 0}`
                   : item.type === "milestone"
                     ? `Hit ${item.metadata?.milestone || 0}%`
+                    : item.type === "challenge"
+                      ? "Started an investing challenge"
                     : item.type === "comment"
                       ? "Left a comment"
                       : "Shared an update"}
