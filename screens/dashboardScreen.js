@@ -8,6 +8,7 @@ import ProgressCircle from "../components/ProgressCircle";
 import ScreenShell from "../components/ScreenShell";
 import { auth, db } from "../firebase";
 import { APP_STYLES, COLORS } from "../theme";
+import { openFeedbackEmail } from "../utils/feedback";
 import {
   getChallengeLabel,
   getDaysUntil,
@@ -176,7 +177,7 @@ export default function DashboardScreen({ navigation }) {
   return (
     <ScreenShell
       title="Home"
-      subtitle="A smarter view of what needs your attention next."
+      subtitle="Keep your savings and investing goals moving with your people."
       headerAction={(
         <TouchableOpacity onPress={() => navigation.navigate("Notifications")} style={{ position: "relative", padding: 4 }}>
           <Ionicons name="notifications-outline" size={22} color={COLORS.accent2} />
@@ -190,16 +191,18 @@ export default function DashboardScreen({ navigation }) {
     >
       {error ? (
         <Text style={[APP_STYLES.feedbackText, { color: COLORS.danger }]}>{error}</Text>
-      ) : null}      {isLoadingInitial ? (
+      ) : null}
+      {isLoadingInitial ? (
         <View style={{ justifyContent: "center", alignItems: "center", marginTop: 40 }}>
           <ActivityIndicator size="large" color={COLORS.accent2} />
         </View>
-      ) : null}      <View style={APP_STYLES.heroCard}>
+      ) : null}
+      <View style={APP_STYLES.heroCard}>
         <BrandLogo width={140} height={64} style={{ marginBottom: 12 }} />
         <Text style={APP_STYLES.label}>Total saved</Text>
         <Text style={APP_STYLES.value}>${total}</Text>
         <Text style={[APP_STYLES.subtitle, { color: COLORS.accent2, marginTop: 12 }]}>
-          Every contribution is moving your stacks forward.
+          Every contribution is building a habit your friends can see and celebrate.
         </Text>
         <View style={[APP_STYLES.row, { marginTop: 14 }]}>
           <TouchableOpacity onPress={() => navigation.navigate("Leaderboard")} style={[APP_STYLES.secondaryButton, { flex: 1, marginTop: 0, marginRight: 8 }]}>
@@ -361,6 +364,16 @@ export default function DashboardScreen({ navigation }) {
         ) : (
           <Text style={APP_STYLES.emptyState}>Create an investing stack to turn saving momentum into a group investing habit.</Text>
         )}
+      </View>
+
+      <View style={APP_STYLES.card}>
+        <Text style={APP_STYLES.label}>Public beta</Text>
+        <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10 }]}>
+          Trying the web app with friends? Send quick feedback so we can keep tightening the experience.
+        </Text>
+        <AnimatedPressable onPress={() => openFeedbackEmail("public-beta")} style={APP_STYLES.secondaryButton}>
+          <Text style={APP_STYLES.secondaryButtonText}>Send Feedback</Text>
+        </AnimatedPressable>
       </View>
 
       <View style={APP_STYLES.card}>

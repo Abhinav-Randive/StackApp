@@ -10,6 +10,7 @@ import ScreenShell from "../components/ScreenShell";
 import AnimatedPressable from "../components/AnimatedPressable";
 import BrandLogo from "../components/BrandLogo";
 import { APP_STYLES, COLORS } from "../theme";
+import { openFeedbackEmail } from "../utils/feedback";
 import { isValidEmail, normalizeEmail } from "../utils/validation";
 
 export default function LoginScreen({ navigation }) {
@@ -82,7 +83,7 @@ export default function LoginScreen({ navigation }) {
       scroll={false}
       contentContainerStyle={{ justifyContent: "center" }}
       title="Stack"
-      subtitle="Pick up where you left off with one clean, consistent home for every savings screen."
+      subtitle="Save and start investing with friends in one shared momentum app."
     >
       <View style={APP_STYLES.heroCard}>
         <BrandLogo width={168} height={76} style={{ alignSelf: "center", marginBottom: 14 }} />
@@ -117,6 +118,10 @@ export default function LoginScreen({ navigation }) {
 
         <AnimatedPressable onPress={signup} style={APP_STYLES.secondaryButton} disabled={loading}>
           <Text style={APP_STYLES.secondaryButtonText}>Create account</Text>
+        </AnimatedPressable>
+
+        <AnimatedPressable onPress={() => openFeedbackEmail("login-screen")} style={APP_STYLES.secondaryButton}>
+          <Text style={APP_STYLES.secondaryButtonText}>Send Feedback</Text>
         </AnimatedPressable>
       </View>
     </ScreenShell>

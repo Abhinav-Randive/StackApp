@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { db, auth } from "../firebase";
 import {
   addDoc,
@@ -345,6 +346,15 @@ export default function StackScreen({ route, navigation }) {
     <ScreenShell
       title={stack.name}
       subtitle={`$${total} saved of $${stack.goal_amount}`}
+      headerAction={(
+        <AnimatedPressable
+          onPress={() => navigation.goBack()}
+          style={[APP_STYLES.secondaryButton, { marginTop: 0, paddingVertical: 10, paddingHorizontal: 14, flexDirection: "row" }]}
+        >
+          <Ionicons name="chevron-back" size={18} color={COLORS.accent2} style={{ marginRight: 6 }} />
+          <Text style={APP_STYLES.secondaryButtonText}>Back</Text>
+        </AnimatedPressable>
+      )}
     >
       <View style={APP_STYLES.heroCard}>
         <View style={{ alignItems: "center" }}>
@@ -513,7 +523,7 @@ export default function StackScreen({ route, navigation }) {
                 <TextInput
                   value={amount}
                   onChangeText={setAmount}
-                  placeholder="Add amount"
+                  placeholder={stack.stack_type === STACK_TYPES.INVESTING ? "Add investing amount" : "Add amount"}
                   placeholderTextColor={COLORS.muted}
                   keyboardType="numeric"
                   style={APP_STYLES.input}
@@ -522,13 +532,19 @@ export default function StackScreen({ route, navigation }) {
                 <TextInput
                   value={note}
                   onChangeText={setNote}
-                  placeholder="Add a note or reason"
+                  placeholder={stack.stack_type === STACK_TYPES.INVESTING ? "Why are you investing today?" : "Add a note or reason"}
                   placeholderTextColor={COLORS.muted}
                   style={APP_STYLES.input}
                 />
 
                 <AnimatedPressable onPress={add} style={APP_STYLES.primaryButton} disabled={savingContribution}>
-                  <Text style={APP_STYLES.primaryButtonText}>{savingContribution ? "Saving..." : "Add Contribution"}</Text>
+                  <Text style={APP_STYLES.primaryButtonText}>
+                    {savingContribution
+                      ? "Saving..."
+                      : stack.stack_type === STACK_TYPES.INVESTING
+                        ? "Add to Investing Goal"
+                        : "Add Contribution"}
+                  </Text>
                 </AnimatedPressable>
 
                 <AnimatedPressable
