@@ -2,6 +2,28 @@ import { addDoc, collection } from "firebase/firestore";
 import { db } from "../firebase";
 
 export const MILESTONES = [25, 50, 75, 100];
+export const STACK_TYPES = {
+  SAVINGS: "savings",
+  INVESTING: "investing"
+};
+export const INVESTING_RISK_LEVELS = ["Safe", "Balanced", "Growth"];
+export const INVESTING_CHALLENGES = {
+  consistency: {
+    key: "consistency",
+    label: "Consistency club",
+    description: "Contribute every week and build the habit together."
+  },
+  first500: {
+    key: "first500",
+    label: "First $500 club",
+    description: "Race together toward the first real investing milestone."
+  },
+  indexfund: {
+    key: "indexfund",
+    label: "Index starter",
+    description: "Build a starter fund with steady group momentum."
+  }
+};
 
 export function makeActivity({
   type,
@@ -23,6 +45,9 @@ export function makeActivity({
     user_id: userId,
     stack_id: stack?.id || null,
     stack_name: stack?.name || "",
+    stack_type: stack?.stack_type || STACK_TYPES.SAVINGS,
+    stack_risk_level: stack?.risk_level || "",
+    challenge_key: stack?.challenge_key || "",
     amount,
     text,
     target_user_ids: targetUserIds,
@@ -50,9 +75,14 @@ export async function createNotification(payload) {
 export function formatActivityLine(item) {
   const name = item.user || "Someone";
   const stackName = item.stack_name ? ` in ${item.stack_name}` : "";
+  const investingLabel = item.stack_type === STACK_TYPES.INVESTING ? " investing" : "";
 
   if (item.type === "milestone") {
-    return `${name} hit ${item.metadata?.milestone || 0}%${stackName}`;
+    return `${name} hit ${item.metadata?.milestone || 0}%${stackName}${investingLabel}`;
+  }
+
+  if (item.type === "challenge") {
+    return `${name} started the ${getChallengeLabel(item.challenge_key)}${stackName}`;
   }
 
   if (item.type === "comment") {
@@ -68,18 +98,23 @@ export function formatActivityLine(item) {
   }
 
   if (item.text) {
-    return `${name} added $${item.amount || 0}${stackName} and shared why`;
+    return `${name} added $${item.amount || 0}${stackName}${investingLabel} and shared why`;
   }
 
-  return `${name} added $${item.amount || 0}${stackName}`;
+  return `${name} added $${item.amount || 0}${stackName}${investingLabel}`;
 }
 
 export function formatNotificationLine(item) {
   const name = item.user || "Someone";
   const stackName = item.stack_name ? ` in ${item.stack_name}` : "";
+  const investingLabel = item.stack_type === STACK_TYPES.INVESTING ? " investing" : "";
 
   if (item.type === "milestone") {
-    return `${name} hit ${item.metadata?.milestone || 0}%${stackName}`;
+    return `${name} hit ${item.metadata?.milestone || 0}%${stackName}${investingLabel}`;
+  }
+
+  if (item.type === "challenge") {
+    return `${name} kicked off the ${getChallengeLabel(item.challenge_key)}${stackName}`;
   }
 
   if (item.type === "comment") {
@@ -94,7 +129,7 @@ export function formatNotificationLine(item) {
     return `${name} reacted to your update${stackName}`;
   }
 
-  return `${name} added $${item.amount || 0}${stackName}`;
+  return `${name} added $${item.amount || 0}${stackName}${investingLabel}`;
 }
 
 export function getStackProgress(total, goal) {
@@ -262,4 +297,35 @@ export function getInactiveDays(timestamp) {
   }
 
   return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+export function getChallengeLabel(challengeKey) {
+  return INVESTING_CHALLENGES[challengeKey]?.label || "investing challenge";
+}
+
+export function getChallengeDescription(challengeKey) {
+  return INVESTING_CHALLENGES[challengeKey]?.description || "";
+}
+
+export function getExpectedAnnualReturn(riskLevel = "Balanced") {
+  if (riskLevel === "Safe") {
+    return 0.04;
+  }
+
+  if (riskLevel === "Growth") {
+    return 0.09;
+  }
+
+  return 0.07;
+}
+
+export function getProjectedValue(total, riskLevel, months = 12) {
+  const principal = Number(total) || 0;
+  const annualRate = getExpectedAnnualReturn(riskLevel);
+  const projected = principal * ((1 + (annualRate / 12)) ** months);
+  return Math.round(projected);
+}
+
+export function getStackTypeLabel(stackType = STACK_TYPES.SAVINGS) {
+  return stackType === STACK_TYPES.INVESTING ? "Investing" : "Savings";
 }

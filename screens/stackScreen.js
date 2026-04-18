@@ -23,11 +23,18 @@ import {
   createActivity,
   createNotification,
   buildShareMessage,
+  getChallengeDescription,
+  getChallengeLabel,
   getDaysUntil,
   getLatestMilestone,
   getNextMilestone,
+  getProjectedValue,
   getStackProgress,
+  getStackTypeLabel,
   getTargetUserIds,
+  INVESTING_CHALLENGES,
+  INVESTING_RISK_LEVELS,
+  STACK_TYPES,
   isCompletedStack
 } from "../utils/activity";
 import { isValidDateInput, parsePositiveAmount, sanitizeText } from "../utils/validation";
@@ -45,6 +52,9 @@ export default function StackScreen({ route, navigation }) {
   const [draftName, setDraftName] = useState(initialStack.name || "");
   const [draftGoal, setDraftGoal] = useState(String(initialStack.goal_amount || ""));
   const [draftDeadline, setDraftDeadline] = useState(initialStack.deadline || "");
+  const [draftStackType, setDraftStackType] = useState(initialStack.stack_type || STACK_TYPES.SAVINGS);
+  const [draftRiskLevel, setDraftRiskLevel] = useState(initialStack.risk_level || "Balanced");
+  const [draftChallengeKey, setDraftChallengeKey] = useState(initialStack.challenge_key || "consistency");
   const [savingContribution, setSavingContribution] = useState(false);
   const [savingStack, setSavingStack] = useState(false);
   const [archiving, setArchiving] = useState(false);
@@ -62,6 +72,9 @@ export default function StackScreen({ route, navigation }) {
       setDraftName(nextStack.name || "");
       setDraftGoal(String(nextStack.goal_amount || ""));
       setDraftDeadline(nextStack.deadline || "");
+      setDraftStackType(nextStack.stack_type || STACK_TYPES.SAVINGS);
+      setDraftRiskLevel(nextStack.risk_level || "Balanced");
+      setDraftChallengeKey(nextStack.challenge_key || "consistency");
 
       const memberProfiles = await Promise.all(
         (nextStack.members || []).map(async (memberId) => {
@@ -236,7 +249,10 @@ export default function StackScreen({ route, navigation }) {
       await updateDoc(doc(db, "stacks", stack.id), {
         name: safeName,
         goal_amount: parsedGoal,
-        deadline: draftDeadline.trim()
+        deadline: draftDeadline.trim(),
+        stack_type: draftStackType,
+        risk_level: draftStackType === STACK_TYPES.INVESTING ? draftRiskLevel : "",
+        challenge_key: draftStackType === STACK_TYPES.INVESTING ? draftChallengeKey : ""
       });
       setEditing(false);
     } catch (err) {
@@ -333,9 +349,25 @@ export default function StackScreen({ route, navigation }) {
       <View style={APP_STYLES.heroCard}>
         <View style={{ alignItems: "center" }}>
           <ProgressCircle progress={progress} size={120} label="complete" />
+          <Text style={[APP_STYLES.label, { color: COLORS.accent2, marginTop: 16 }]}>
+            {getStackTypeLabel(stack.stack_type)}
+          </Text>
           <Text style={[APP_STYLES.subtitle, { marginTop: 16 }]}>
             {stack.members?.length || 0} members working toward this goal
           </Text>
+          {stack.stack_type === STACK_TYPES.INVESTING ? (
+            <>
+              <Text style={[APP_STYLES.subtitle, { color: COLORS.accent2, marginTop: 8 }]}>
+                {stack.risk_level || "Balanced"} profile
+              </Text>
+              <Text style={[APP_STYLES.subtitle, { marginTop: 8 }]}>
+                {getChallengeLabel(stack.challenge_key)}
+              </Text>
+              <Text style={[APP_STYLES.subtitle, { color: COLORS.accent, marginTop: 8 }]}>
+                1 year projection: ${getProjectedValue(total, stack.risk_level, 12)}
+              </Text>
+            </>
+          ) : null}
           {completed ? (
             <Text style={[APP_STYLES.subtitle, { color: COLORS.accent, marginTop: 8 }]}>
               This stack is complete.
@@ -391,6 +423,66 @@ export default function StackScreen({ route, navigation }) {
               placeholderTextColor={COLORS.muted}
               style={APP_STYLES.input}
             />
+            <View style={[APP_STYLES.row, { marginTop: 14 }]}>
+              {[STACK_TYPES.SAVINGS, STACK_TYPES.INVESTING].map((type) => (
+                <AnimatedPressable
+                  key={type}
+                  onPress={() => setDraftStackType(type)}
+                  style={[
+                    draftStackType === type ? APP_STYLES.primaryButton : APP_STYLES.secondaryButton,
+                    { flex: 1, marginTop: 0, marginRight: type === STACK_TYPES.SAVINGS ? 8 : 0, paddingVertical: 12 }
+                  ]}
+                >
+                  <Text style={draftStackType === type ? APP_STYLES.primaryButtonText : APP_STYLES.secondaryButtonText}>
+                    {getStackTypeLabel(type)}
+                  </Text>
+                </AnimatedPressable>
+              ))}
+            </View>
+            {draftStackType === STACK_TYPES.INVESTING ? (
+              <>
+                <Text style={[APP_STYLES.label, { marginTop: 14 }]}>Risk profile</Text>
+                <View style={[APP_STYLES.row, { marginTop: 10, flexWrap: "wrap", alignItems: "flex-start" }]}>
+                  {INVESTING_RISK_LEVELS.map((level) => (
+                    <AnimatedPressable
+                      key={level}
+                      onPress={() => setDraftRiskLevel(level)}
+                      style={[
+                        draftRiskLevel === level ? APP_STYLES.primaryButton : APP_STYLES.secondaryButton,
+                        { marginTop: 0, marginRight: 8, marginBottom: 8, paddingVertical: 10, paddingHorizontal: 14 }
+                      ]}
+                    >
+                      <Text style={draftRiskLevel === level ? APP_STYLES.primaryButtonText : APP_STYLES.secondaryButtonText}>
+                        {level}
+                      </Text>
+                    </AnimatedPressable>
+                  ))}
+                </View>
+                <Text style={[APP_STYLES.label, { marginTop: 6 }]}>Social challenge</Text>
+                {Object.values(INVESTING_CHALLENGES).map((challenge) => (
+                  <AnimatedPressable
+                    key={challenge.key}
+                    onPress={() => setDraftChallengeKey(challenge.key)}
+                    style={[
+                      draftChallengeKey === challenge.key ? APP_STYLES.primaryButton : APP_STYLES.secondaryButton,
+                      { marginTop: 10, alignItems: "flex-start" }
+                    ]}
+                  >
+                    <Text style={draftChallengeKey === challenge.key ? APP_STYLES.primaryButtonText : APP_STYLES.secondaryButtonText}>
+                      {challenge.label}
+                    </Text>
+                    <Text
+                      style={[
+                        APP_STYLES.subtitle,
+                        { marginTop: 6, color: draftChallengeKey === challenge.key ? "#1C1020" : COLORS.subtext }
+                      ]}
+                    >
+                      {challenge.description}
+                    </Text>
+                  </AnimatedPressable>
+                ))}
+              </>
+            ) : null}
             <AnimatedPressable onPress={saveStack} style={APP_STYLES.primaryButton} disabled={savingStack}>
               <Text style={APP_STYLES.primaryButtonText}>{savingStack ? "Saving..." : "Save Stack"}</Text>
             </AnimatedPressable>
@@ -400,6 +492,20 @@ export default function StackScreen({ route, navigation }) {
           </>
         ) : (
           <>
+            {stack.stack_type === STACK_TYPES.INVESTING ? (
+              <View style={[APP_STYLES.card, { marginTop: 0, marginBottom: 12, borderRadius: 18, padding: 14 }]}>
+                <Text style={APP_STYLES.label}>Investing setup</Text>
+                <Text style={[APP_STYLES.subtitle, { color: COLORS.text, marginTop: 10 }]}>
+                  {stack.risk_level || "Balanced"} risk profile
+                </Text>
+                <Text style={[APP_STYLES.subtitle, { marginTop: 6 }]}>
+                  {getChallengeLabel(stack.challenge_key)}
+                </Text>
+                <Text style={[APP_STYLES.subtitle, { marginTop: 6, color: COLORS.accent2 }]}>
+                  {getChallengeDescription(stack.challenge_key)}
+                </Text>
+              </View>
+            ) : null}
             {!completed ? (
               <>
                 <Text style={APP_STYLES.label}>Add contribution</Text>
